@@ -10,13 +10,13 @@ Comparison of two IP routing table lookup schemes.
 
 ## Directory Structure
 
--classbench
-  -db\_generator
-  -parameter\_files
-  -trace\_generator
--source
-  -small\_tables
-  -scalable\_tables
+- classbench
+  - db\_generator
+  - parameter\_files
+  - trace\_generator
+- source
+  - small\_tables
+  - scalable\_tables
 
 The classbench directory contains all the code needed to build and run classbench.  
 [Classbench](http://www.arl.wustl.edu/classbench/)
