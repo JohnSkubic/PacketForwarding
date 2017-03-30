@@ -24,3 +24,26 @@ The classbench directory contains all the code needed to build and run classbenc
 The source directory will contain code that is shared between the two schemes
 Code specific to each lookup scheme is contained in their respective directories.
 
+## Running Tests
+
+1. Build classbench by running the following in the classbench directory:
+```
+make all
+```
+
+2. Build the routing table tests by running the following in the source directory:
+```
+make all
+```
+
+3. Generate a filter file and a trace file with classbench by running the following in the db\_generator directory:
+```
+./db_generator -bc ../parameter_files/fw1_seed 10000 2 -0.5 0.1 ../../outputs/fw1_filter_10k
+./trace_generator 1 1 10 ../../outputs/fw1_filter_10k
+```
+
+4. Run the tests on routing tables in the source directory:
+```
+./small_tables ../outputs/fw1_filter_10k ../outputs/fw1_filter_10k_trace
+./scalable_tables ../outputs/fw1_filter_10k ../outputs/fw1_filter_10k_trace
+```
