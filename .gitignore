@@ -31,3 +31,8 @@
 # Debug files
 *.dSYM/
 *.su
+
+# Project Specific Executables
+*.out
+db_generator
+trace_generator
