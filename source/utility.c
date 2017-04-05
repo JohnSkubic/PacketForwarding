@@ -15,7 +15,7 @@
 #define TRACE_FORMAT "%*d %d %*d %*d %*d %*d"
 
 //parses the output of db_generator
-route_table_entry_t *create_routing_table (char *filename) {
+route_table_entry_t *create_routing_table (char *filename, int *size) {
   route_table_entry_t *table = NULL;
   FILE *fptr;
   uint32_t ip3, ip2, ip1, ip0;
@@ -33,6 +33,7 @@ route_table_entry_t *create_routing_table (char *filename) {
   while (fgets(line, sizeof line, fptr)) 
     num_lines++;
 
+  *size = num_lines;
   fseek(fptr, 0, SEEK_SET);
  
   if ((table = (route_table_entry_t*)malloc(sizeof(route_table_entry_t) * num_lines)) == NULL) {
@@ -137,3 +138,50 @@ void test_routing_table(route_table_entry_t *trace, int num_tests, void *table, 
 uint32_t get_gold_nexthop(uint32_t ip, route_table_entry_t *table) {
   return 0;
 }
+
+
+void mergesort(route_table_entry_t *table, int size) {
+
+  route_table_entry_t *copy;
+  int i;
+
+  copy = (route_table_entry_t*)malloc(sizeof(route_table_entry_t)*size);
+  for (i=0; i < size; i++) {
+    copy[i] = table[i];
+  }
+  mergesort_rec(copy, table, 0, size-1);
+  free(copy);
+
+}
+
+void mergesort_rec(route_table_entry_t *table, route_table_entry_t *sorted, int l_idx, int u_idx) {
+  int mid;
+  int idx, l_1, u_1, l_2, u_2;
+
+  mid = (u_idx + l_idx) / 2;
+
+  if ((u_idx - l_idx) > 1) {
+    l_1 = l_idx;
+    u_1 = mid;
+    l_2 = mid+1;
+    u_2 = u_idx;
+    mergesort_rec(sorted, table, l_1, u_1);
+    mergesort_rec(sorted, table, l_2, u_2);  
+    u_1++;
+    u_2++; 
+    
+    while ((l_1 != u_1) || (l_2 != u_2)) {
+      if (l_2 == u_2) { // done with arr2
+        sorted[idx++].dest_addr.mask = table[l_1++].dest_addr.mask;
+      } else if (l_1 == u_1) { // done with arr 1
+        sorted[idx++].dest_addr.mask = table[l_2++].dest_addr.mask;
+      } else if (sorted[l_1].dest_addr.mask >= table[l_2].dest_addr.mask) { // pick from arr 1
+        sorted[idx++].dest_addr.mask = table[l_1++].dest_addr.mask;
+      } else { // pick from arr 2
+        sorted[idx++].dest_addr.mask = table[l_2++].dest_addr.mask;
+      }
+    }
+  }
+}
+
+

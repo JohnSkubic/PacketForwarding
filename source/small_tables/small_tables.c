@@ -14,7 +14,7 @@
 int main (int argc, char *argv[]) {
   route_table_entry_t *table;
   route_table_entry_t *trace;
-  int num_tests;
+  int num_tests, num_entries;
 
   if (argc < 3) {
     printf("Usage: %s <filter_file> <trace_file>\n", argv[0]);
@@ -24,13 +24,20 @@ int main (int argc, char *argv[]) {
 
   /* Build Routing Table */
 
-  if((table = create_routing_table(argv[1])) == NULL) {
+  if((table = create_routing_table(argv[1], &num_entries)) == NULL) {
     printf("Error: Could not create routing table from file %s\n", argv[1]);
   }
 
   /* Sort Routing Table */
 
-  //TODO: Sort Routing Table (Mergesort)
+  //Sort Routing Table (Mergesort)
+  mergesort(table, num_entries);
+  int i = 0;
+  for (i=0; i < num_entries-1; i++) {
+    if (table[i].dest_addr.mask < table[i+1].dest_addr.mask) {
+      printf("Error at idx: %d\n", i);
+    } 
+  }
 
   /* Build Trace Array with Gold Outputs */
   if((trace = create_trace(argv[2], table, &num_tests)) == NULL) {
