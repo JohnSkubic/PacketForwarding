@@ -36,3 +36,8 @@
 *.out
 db_generator
 trace_generator
+
+# Output files should be ignored except for the examples
+outputs/*
+!outputs/example
+!outputs/example_trace
