@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS= -Ismall_tables/ -Iscalable_tables/ -I ./ -Wall -Wshadow 
+CFLAGS= -Ismall_tables/ -Iscalable_tables/ -I ./ -Wall -Wshadow -O0 -g -gdwarf-2 
 all: clean scalable_tables small_tables
 
 clean:

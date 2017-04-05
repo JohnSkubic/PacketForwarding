@@ -35,16 +35,19 @@ typedef struct route_table_entry_t {
 
 //building routing table from filter file
 route_table_entry_t *create_routing_table (char *filename, int *size);
+
+int compare_route_table_entries(route_table_entry_t a, route_table_entry_t b);
+
 //build an array of test cases from the trace file
-route_table_entry_t *create_trace (char *filename, route_table_entry_t *table, int *num_tests);
+route_table_entry_t *create_trace (char *filename, route_table_entry_t *table, int table_size, int *num_tests);
 void destroy_routing_table(route_table_entry_t *table);
 
 void test_routing_table(route_table_entry_t *trace, int num_tests, void *table, uint32_t (*lookup)(uint32_t, void*));
 
-uint32_t get_gold_nexthop(uint32_t ip, route_table_entry_t *table);
+uint32_t get_gold_nexthop(uint32_t ip, route_table_entry_t *table, int table_size);
 
-void mergesort(route_table_entry_t *table, int size);
+void mergesort(route_table_entry_t *table, int size, int metric);
 
-void mergesort_rec(route_table_entry_t *table, route_table_entry_t *sorted, int l_idx, int u_idx);
+void mergesort_rec(route_table_entry_t *table, route_table_entry_t *sorted, int l_idx, int u_idx, int metric);
 
 #endif // UTILITY_H
