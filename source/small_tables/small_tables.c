@@ -55,7 +55,8 @@ int main (int argc, char *argv[]) {
   /* Test Routing Table implementation */
 
   // build routing table structure from table
-  small_table_t *s_table; 
+  small_table_t *s_table = NULL;
+  // TODO : Build small table 
 
   // Run test (second argument is function pointer)
   printf("Testing small tables\n");
@@ -71,7 +72,58 @@ int main (int argc, char *argv[]) {
 uint32_t lookup_small_table(uint32_t dest_ip, void *table) {
   small_table_t *s_table;
 
+  uint32_t ix, bix, bit, pix, pointer;
+
+  uint16_t codeword, ten, six;
+
+  uint8_t maptable_off;
+
   s_table = (small_table_t *)table;
 
+  /* Lookup Level 1 */
+  
+  ix  = (IX_BM  & dest_ip) >> 20;
+  bix = (BIX_BM & dest_ip) >> 22;
+  bit = (BIT_BM & dest_ip) >> 16;
+
+  codeword = s_table->l1.codewords[ix];
+  six = (codeword & CODEWORD_6_BM) >> 10;
+  ten = (codeword & CODEWORD_10_BM);
+
+  maptable_off = s_table->maptable[ten][bit >> 1];
+  maptable_off = (bit & 0x01) ? maptable_off >> 4 : maptable_off & 0x0f;
+
+  pix = s_table->l1.base[bix] + six + maptable_off;
+
+  pointer = s_table->l1.pointers[pix];
+
+  if (!(pointer & HEAD_PTR_TYPE_MASK))  // if nonzero, pointer to l2
+    return s_table->next_hop_table[pointer & HEAD_PTR_PTR_MASK];
+
+  /* Lookup Level 2 */
+
+  pointer = get_chunk_ptr(dest_ip, 2, pointer, s_table);
+
+  if (!(pointer & HEAD_PTR_TYPE_MASK))  // if nonzero, pointer to l3
+    return s_table->next_hop_table[pointer & HEAD_PTR_PTR_MASK];
+ 
+  /* Lookup Level 3 */
+  
+  pointer = get_chunk_ptr(dest_ip, 3, pointer, s_table);
+
+  return s_table->next_hop_table[pointer & HEAD_PTR_PTR_MASK];
+}
+
+uint32_t get_chunk_ptr (uint32_t dest_ip, uint32_t level, uint32_t pointer, small_table_t *s_table) {
+  
+  chunk_t chunk;
+
+  if (level == 2)
+    chunk = s_table->l2[pointer];
+  else
+    chunk = s_table->l3[pointer];
+
+  //TODO
+ 
   return 0;
 }

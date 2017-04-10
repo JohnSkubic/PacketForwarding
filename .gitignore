@@ -36,6 +36,7 @@
 *.out
 db_generator
 trace_generator
+*.swp
 
 # Output files should be ignored except for the examples
 outputs/*
