@@ -56,7 +56,10 @@ int main (int argc, char *argv[]) {
 
   // build routing table structure from table
   small_table_t *s_table = NULL;
-  // TODO : Build small table 
+  if((s_table = build_small_table(table, num_entries)) == NULL) {
+    printf("Error: Could not build small table\n");
+    return EXIT_FAILURE;
+  }
 
   // Run test (second argument is function pointer)
   printf("Testing small tables\n");
@@ -65,8 +68,138 @@ int main (int argc, char *argv[]) {
   /* Free Resources */
   destroy_routing_table(table);
   destroy_routing_table(trace);
+  destroy_small_table(s_table);
 
   return EXIT_SUCCESS;
+}
+
+
+small_table_t *build_small_table(route_table_entry_t *table, int table_size) {
+
+  small_table_t *s_table;
+  chunk_t *temp;
+  int i,j,k;
+  uint32_t pointers[table_size];
+
+  if ((s_table = malloc(sizeof(small_table_t))) == NULL) {
+    printf("Error: Could not allocate space for small table\n");
+    return NULL;
+  }
+
+  if ((s_table->next_hop_table = malloc(sizeof(uint32_t) * table_size)) == NULL) {
+    printf("Error: Could not allocate space for next hop table\n");
+    return NULL;
+  }
+
+  // Sort table by mask length
+  mergesort(table, table_size, MASK_LEN);
+
+  /* Build L3 Chunks */
+
+  // Sort lengths 25-32 by IP
+  i = 0;
+  while ((i < table_size) && (table[i].dest_addr.mask > 24)) i++;
+  mergesort(table, i, IP_ADDR);
+
+  i = 0;
+  while (table[i].dest_addr.mask > 24) {
+    j = 1;
+    while ((i+j < table_size) && 
+    ((table[i].dest_addr.address & L3_MASK) == (table[i+j].dest_addr.address & L3_MASK))) {
+      j++;
+    }  
+    // j now contains the number of entries in this chunk
+    printf("Found L3 chunk of size: %d\n", j);
+
+    // L3 will always be pointers into the routing table
+    for (k=0; k < j; k++) {
+      pointers[k] = table[k+i].next_hop_addr & ~HEAD_PTR_TYPE_MASK;
+    }
+
+    if (j <= 8) 
+      temp = build_sparse_chunk(&table[i], pointers, j, 3);
+    else if (j <= 64) 
+      temp = build_dense_chunk(&table[i], pointers, j);
+    else 
+      temp = build_vdense_chunk(&table[i], pointers, j);
+
+    // update loop
+    i = i + j;
+  }
+
+
+  /* Build L2 Chunks */
+
+
+
+  /* Build L1 */
+
+
+  /* Build maptable */
+
+
+  return NULL;
+}
+
+
+void destroy_small_table(small_table_t *table) {
+  // TODO
+}
+
+chunk_t *build_sparse_chunk(route_table_entry_t *table, uint32_t *pointers, int size, int level) {
+  chunk_t *chunk = NULL;
+  int i;
+
+  if((chunk = malloc(sizeof(chunk_t))) == NULL) {
+    printf("Error: Couldn't allocate space for sparse chunk\n");
+    return NULL; 
+  }
+
+  chunk->sparse.type = CHUNK_TYPE_SPARSE;
+  chunk->sparse.num_heads = size;
+
+  if(((chunk->sparse.heads = malloc(sizeof(uint8_t) * size)) == NULL) || 
+      ((chunk->sparse.pointers = malloc(sizeof(uint32_t) *size)) == NULL)) {
+    printf("Error: Couldn't allocate space for arrays in sparse chunk\n");
+    return NULL;
+  }
+
+  for(i = 0; i < size; i++) {
+    if(level == 3) 
+      chunk->sparse.heads[i] = (uint8_t)(table[i].dest_addr.address & L3_MASK);
+    else 
+      chunk->sparse.heads[i] = (uint8_t)((table[i].dest_addr.address & L2_MASK) >> 8);
+      
+    chunk->sparse.pointers[i] = pointers[i];
+  }
+ 
+  return NULL;
+}
+
+chunk_t *build_dense_chunk(route_table_entry_t *table, uint32_t *pointers, int size) {
+  // TODO
+   
+  chunk_t *chunk = NULL;
+
+  if((chunk = malloc(sizeof(chunk_t))) == NULL) {
+    printf("Error: Couldn't allocate space for dense chunk\n");
+    return NULL; 
+  }
+
+  return NULL;
+}
+
+chunk_t *build_vdense_chunk(route_table_entry_t *table, uint32_t *pointers, int size) {
+  // TODO
+ 
+  chunk_t *chunk = NULL;
+
+  if((chunk = malloc(sizeof(chunk_t))) == NULL) {
+    printf("Error: Couldn't allocate space for very dense chunk\n");
+    return NULL; 
+  }
+
+  return NULL;
 }
 
 uint32_t lookup_small_table(uint32_t dest_ip, void *table) {
