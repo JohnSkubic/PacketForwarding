@@ -76,9 +76,9 @@ typedef struct small_table_t {
 small_table_t *build_small_table(route_table_entry_t *table, int table_size);
 void destroy_small_table(small_table_t *table);
 
-chunk_t *build_sparse_chunk(route_table_entry_t *table, uint32_t *pointers,  int size, int level);
-chunk_t *build_dense_chunk(route_table_entry_t *table,  uint32_t *pointers,  int size);
-chunk_t *build_vdense_chunk(route_table_entry_t *table, uint32_t *pointers,  int size);
+chunk_t build_sparse_chunk(route_table_entry_t *table, uint32_t *pointers,  int size, int level);
+chunk_t build_dense_chunk(route_table_entry_t *table,  uint32_t *pointers,  int size);
+chunk_t build_vdense_chunk(route_table_entry_t *table, uint32_t *pointers,  int size);
 
 uint32_t lookup_small_table(uint32_t dest_ip, void *table);
 uint32_t get_chunk_ptr(uint32_t dest_ip, uint32_t level, uint32_t pointer, small_table_t *s_table);
