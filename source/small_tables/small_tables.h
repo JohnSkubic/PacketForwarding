@@ -14,12 +14,19 @@
 #define HEAD_PTR_TYPE_MASK  0xc000
 #define HEAD_PTR_PTR_MASK   0x3fff
 
+// L1
 #define IX_BM   0xfff00000
 #define BIX_BM  0xffc00000
 #define BIT_BM  0x000f0000
 
 #define CODEWORD_6_BM   0xfc00
 #define CODEWORD_10_BM  0x03ff
+
+
+//L2 L3
+#define IX_2_3_BM   0x000000f0
+#define BIX_2_3_BM  0x000000c0
+#define BIT_2_3_BM  0x0000000f
 
 
 /* Data structure for 16 depth cut */
@@ -39,7 +46,9 @@ typedef struct cut_t {
 
 typedef struct chunk_sparse_t {
   uint8_t type;
+  uint8_t num_heads;
   uint8_t *heads;
+  uint32_t *pointers;
 } chunk_sparse_t;
 
 typedef struct chunk_dense_t {

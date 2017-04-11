@@ -114,16 +114,83 @@ uint32_t lookup_small_table(uint32_t dest_ip, void *table) {
   return s_table->next_hop_table[pointer & HEAD_PTR_PTR_MASK];
 }
 
+
+
 uint32_t get_chunk_ptr (uint32_t dest_ip, uint32_t level, uint32_t pointer, small_table_t *s_table) {
   
   chunk_t chunk;
+  uint8_t addr;
+  int i;
+  uint32_t out_pointer;
 
-  if (level == 2)
+  // for calculating cut
+  uint32_t ix, bix, bit, pix;
+  uint16_t codeword, ten, six;
+  uint8_t maptable_off;
+
+  if (level == 2) {
     chunk = s_table->l2[pointer];
-  else
+    addr = (dest_ip & 0x0000ff00) >> 8;
+  }
+  else {
     chunk = s_table->l3[pointer];
+    addr = dest_ip & 0x000000ff;
+  }
 
-  //TODO
+  // Check the type of chunk 
+
+  if        (chunk.sparse.type == CHUNK_TYPE_SPARSE) { // 1-8 heads
+    i = chunk.sparse.num_heads/2;
+    //TODO: May need ip mask to do this linear search
+    if (addr >= chunk.sparse.heads[i]) {
+      for(i = i; i < chunk.sparse.num_heads; i++) {
+        if(addr >= chunk.sparse.heads[i]) {
+          out_pointer = chunk.sparse.pointers[i];
+          break;
+        }
+      }
+    } else {
+      for(i = 0; i < i; i--) {
+        if(addr >= chunk.sparse.heads[i]) {
+          out_pointer = chunk.sparse.pointers[i];
+          break;
+        }
+      } 
+    }
+
+  } else if (chunk.sparse.type == CHUNK_TYPE_DENSE) { // 9-64 heads
+    ix  = (IX_2_3_BM  & addr) >> 4;
+    bit = (BIT_2_3_BM & addr);
+
+    codeword = chunk.dense.cut.codewords[ix];
+    six = (codeword & CODEWORD_6_BM) >> 10;
+    ten = (codeword & CODEWORD_10_BM);
+
+    maptable_off = s_table->maptable[ten][bit >> 1];
+    maptable_off = (bit & 0x01) ? maptable_off >> 4 : maptable_off & 0x0f;
+
+    // Only one base index
+    pix = chunk.dense.cut.base[0] + six + maptable_off;
+
+    out_pointer = chunk.dense.cut.pointers[pix];
+
+  } else if (chunk.sparse.type == CHUNK_TYPE_VERYDENSE) { // 65-256 heads
+    ix  = (IX_2_3_BM  & addr) >> 4;
+    bix = (BIX_2_3_BM & addr) >> 6;
+    bit = (BIT_2_3_BM & addr);
+
+    codeword = chunk.dense.cut.codewords[ix];
+    six = (codeword & CODEWORD_6_BM) >> 10;
+    ten = (codeword & CODEWORD_10_BM);
+
+    maptable_off = s_table->maptable[ten][bit >> 1];
+    maptable_off = (bit & 0x01) ? maptable_off >> 4 : maptable_off & 0x0f;
+
+    // Only one base index
+    pix = chunk.dense.cut.base[bix] + six + maptable_off;
+
+    out_pointer = chunk.dense.cut.pointers[pix];
+  }
  
-  return 0;
+  return out_pointer;
 }
