@@ -19,9 +19,11 @@
 #define BIX_BM  0xffc00000
 #define BIT_BM  0x000f0000
 
-#define CODEWORD_6_BM   0x003f
-#define CODEWORD_10_BM  0xffc0
+#define CODEWORD_6_BM   0xfc00
+#define CODEWORD_10_BM  0x03ff
 
+#define MASK_6 0x003f
+#define MASK_10_MSB 0xffc0
 
 //L2 L3
 #define IX_2_3_BM   0x000000f0
@@ -108,8 +110,9 @@ typedef struct lnode_t {
 } lnode_t;
 
 void add_node(lnode_t *head, uint8_t idx, uint8_t type, uint32_t nhop);
-node_t *get_node_by_idx(lnode_t *head, uint8_t idx);
+lnode_t *get_node_by_idx(lnode_t *head, uint8_t idx);
 
+uint16_t get_maptable_idx(uint16_t bitvect, uint16_t *maptable);
 uint16_t get_nhop_idx(uint32_t *nhop_table, uint32_t nhop, int size);
 
 node_t *new_node();

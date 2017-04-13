@@ -144,14 +144,15 @@ small_table_t *build_small_table(route_table_entry_t *table, int table_size) {
   uint16_t *maptable; // length = 676
   maptable = build_map_table();
 
-  // Sort table by mask length
-  mergesort(table, table_size, MASK_LEN);
 
   /*  
   *
   * Build Binary Tree Representation
   *
   */
+
+  // Sort table by mask length
+  mergesort(table, table_size, MASK_LEN);
 
   tree = new_node();
   tree->type = HEAD_TREE_ROOT;
@@ -216,12 +217,17 @@ small_table_t *build_small_table(route_table_entry_t *table, int table_size) {
 
   set_L1_codeword_base(codewords, ptrs, maptable, s_table);
 
+  for(i =0; i < L1_N_CODEWORDS; i++) {
+    if((s_table->l1.codewords[i] & CODEWORD_10_BM) < 676)
+      printf("CODE_OFF: %d BASE_OFF: %d i: %d\n", (s_table->l1.codewords[i] & CODEWORD_6_BM) >> 10, s_table->l1.base[i/4], i);
+  }
+
   return NULL;
 }
 
 
 void set_L1_codeword_base(uint16_t *codewords, lnode_t *ptrs, uint16_t *maptable, small_table_t *s_table) {
-  int i;
+  int i,j,k;
   int ptr_cnt = 0;
   int l2_ptr_cnt = 0;
   uint32_t next_hop = 0;
@@ -229,8 +235,35 @@ void set_L1_codeword_base(uint16_t *codewords, lnode_t *ptrs, uint16_t *maptable
   lnode_t *temp = NULL;
   uint16_t nhop_idx;
   uint16_t nhop_ptr;
+  uint16_t mask;
+  int ptrs_in_bvects = 0;
+  uint16_t ten,six;
 
+
+  // Determine size of L1 PTR TABLE and allocate space
+  ptr_cnt = 0;
+  for (i=0; i < L1_N_CODEWORDS;i++) {
+    if(!((codewords[i] == 0) || (codewords[i] == 0x8000))) {
+      for (j = 0; j < 16; j++) {
+        if (codewords[i] & mask) {
+          ptr_cnt++; 
+        }
+        mask = mask >> 1;
+      }
+    }
+  }
+
+  s_table->l1_ptr_table = malloc(sizeof(uint16_t) * ptr_cnt);
+
+
+  ptr_cnt = 0;
   for (i = 0; i < L1_N_CODEWORDS; i++) {
+    // set 10 bit based on codeword
+    if(i%4 == 0) {
+      s_table->l1.base[i/4] = ptr_cnt;
+      ptrs_in_bvects = 0;
+    }
+
     if((codewords[i] == 0) || (codewords[i] == 0x8000)) {// bit masks 0 & 1 have ptr directly encoded
       // ten = upper 10bits + 676; six = lower six bits
       temp = get_node_by_idx(&ptrs[i], 0); //0x8000 
@@ -240,15 +273,56 @@ void set_L1_codeword_base(uint16_t *codewords, lnode_t *ptrs, uint16_t *maptable
       nhop_idx = get_nhop_idx(s_table->next_hop_table, last_ptr->nhop, s_table->num_entries);
       //set the codeword
       s_table->l1.codewords[i] = 0;
-      s_table->l1.codewords[i] |= (nhop_idx & CODEWORD_6_BM) << 10;
-      s_table->l1.codewords[i] |= (((nhop_idx & CODEWORD_10_BM) >> 6) + 676);
+      s_table->l1.codewords[i] |= (nhop_idx & MASK_6) << 10;
+      s_table->l1.codewords[i] |= (((nhop_idx & MASK_10_MSB) >> 6) + 676);
       //printf("For idx: %x Build Codeword: %x\n", nhop_idx, s_table->l1.codewords[i]);
     } else {
       // iterate through each active head (start with MSB)
+      
+      // Build 6bit and 10bit codeword
 
+      ten = get_maptable_idx(codewords[i], maptable);
+      six = ptrs_in_bvects;
+      printf("Setting codeword[%d] six: %d ten: %d\n", i, six, ten);
+      s_table->l1.codewords[i] = 0;
+      s_table->l1.codewords[i] |= (six << 10);
+      s_table->l1.codewords[i] |= ten & CODEWORD_10_BM; 
+
+      mask = 0x8000;
+      for (j = 0; j < 16; j++) {
+        if (codewords[i] & mask) {
+          temp = get_node_by_idx(&ptrs[i], j);
+          last_ptr = temp;
+          if(temp->type != PTR_TYPE_NH) { // ptr to L2 Chunk
+            //TODO: L2 - figure out type here
+            s_table->l1_ptr_table[ptr_cnt] = l2_ptr_cnt | (PTR_TYPE_SPARSE << 14); 
+            l2_ptr_cnt++;
+          }
+          else { // add index in nh table to L1 table
+            s_table->l1_ptr_table[ptr_cnt] = get_nhop_idx(s_table->next_hop_table, last_ptr->nhop, s_table->num_entries) & ~HEAD_PTR_TYPE_MASK;
+          }
+          ptrs_in_bvects++;
+          ptr_cnt++;
+        }
+        mask = mask >> 1;
+      }
     }
   }
+}
 
+uint16_t get_maptable_idx(uint16_t bitvect, uint16_t *maptable) {
+  int i;
+  uint16_t idx = -1;
+  for(i = 0; i < 676; i++) {
+    if (maptable[i] == bitvect) {
+      idx = i;
+      break;
+    }
+  }
+  if(idx == -1) {
+    printf("ERROR: Couldn't find %x in maptable\n", bitvect);
+  }
+  return idx;
 }
 
 uint16_t get_nhop_idx(uint32_t *nhop_table, uint32_t nhop, int size) {
@@ -260,11 +334,14 @@ uint16_t get_nhop_idx(uint32_t *nhop_table, uint32_t nhop, int size) {
       break;
     }
   }
+  if(idx == -1) {
+    printf("ERROR: Couldn't find %d in nexthoptable\n", nhop);
+  }
   return idx;
 }
 
 
-node_t *get_node_by_idx(lnode_t *head, uint8_t idx) {
+lnode_t *get_node_by_idx(lnode_t *head, uint8_t idx) {
   lnode_t *temp = head;
 
   if (temp->next == NULL) return NULL;
@@ -272,6 +349,7 @@ node_t *get_node_by_idx(lnode_t *head, uint8_t idx) {
 
   while(temp != NULL) {
     if(temp->idx == idx) return temp;
+    temp = temp->next;
   }
   return NULL;
 }
@@ -344,8 +422,8 @@ void complete_tree(node_t *node, node_t *ancestor, int depth, uint32_t addr) {
   if (node->type == HEAD_GENUINE) {
     ancestor = node;
 
-    if(((node->r != NULL) && (node->r == HEAD_GENUINE)) &&
-    ((node->l != NULL) && (node->l == HEAD_GENUINE))) {
+    if(((node->r != NULL) && (node->r->type == HEAD_GENUINE)) &&
+    ((node->l != NULL) && (node->l->type == HEAD_GENUINE))) {
       node->type = HEAD_ROOT;
     }
   }
