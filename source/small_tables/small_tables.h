@@ -19,8 +19,8 @@
 #define BIX_BM  0xffc00000
 #define BIT_BM  0x000f0000
 
-#define CODEWORD_6_BM   0xfc00
-#define CODEWORD_10_BM  0x03ff
+#define CODEWORD_6_BM   0x003f
+#define CODEWORD_10_BM  0xffc0
 
 
 //L2 L3
@@ -32,35 +32,39 @@
 
 /* Data structure for 16 depth cut */
 
+#define L1_N_CODEWORDS  4096
+#define L1_N_BASES      1024
+
 typedef struct cut_t {
-  uint16_t *pointers; 
   uint16_t *codewords;
   uint16_t *base;
 } cut_t;
 
+uint16_t get_codeword_off(uint16_t codeword);
+uint16_t get_codeword_idx(uint16_t codeword);
+uint16_t set_codeword_off(uint16_t codeword, uint16_t off);
+uint16_t set_codeword_idx(uint16_t codeword, uint16_t idx);
 
 /* Data structure for level 2 and 3 chunks */
 
-#define CHUNK_TYPE_SPARSE     0 
-#define CHUNK_TYPE_DENSE      1
-#define CHUNK_TYPE_VERYDENSE  2
+// Pointer types (upper 2 bits of 16 bit ptrs)
+#define PTR_TYPE_NH         0
+#define PTR_TYPE_SPARSE     1 
+#define PTR_TYPE_DENSE      2
+#define PTR_TYPE_VERYDENSE  3
 
 typedef struct chunk_sparse_t {
-  uint8_t type;
-  uint8_t num_heads;
-  uint8_t *heads;
-  uint32_t *pointers;
+  uint32_t *heads;
+  uint16_t *pointers;
 } chunk_sparse_t;
 
 typedef struct chunk_dense_t {
-  uint8_t type;
   cut_t   cut;
 } chunk_dense_t;
 
 typedef union chunk_t {
   chunk_sparse_t  sparse;
   chunk_dense_t   dense;
-  chunk_dense_t  vdense; 
 } chunk_t;
 
 /* Small table Data Structure */
@@ -71,16 +75,36 @@ typedef struct small_table_t {
   cut_t   l1;
   chunk_t *l2;
   chunk_t *l3;
+  uint16_t *l1_ptr_table;
+  uint16_t *l2_ptr_table;
+  uint16_t *l3_ptr_table;
 } small_table_t;
 
 small_table_t *build_small_table(route_table_entry_t *table, int table_size);
 void destroy_small_table(small_table_t *table);
 
-chunk_t build_sparse_chunk(route_table_entry_t *table, uint32_t *pointers,  int size, int level);
-chunk_t build_dense_chunk(route_table_entry_t *table,  uint32_t *pointers,  int size);
-chunk_t build_vdense_chunk(route_table_entry_t *table, uint32_t *pointers,  int size);
+
+#define HEAD_ROOT       0
+#define HEAD_GENUINE    1
+#define HEAD_MEMBER     2
+#define HEAD_UNDEF      3
+#define HEAD_TREE_ROOT  4
+
+// Linked List for building tree
+typedef struct node_t {
+    uint8_t type; // type of head 
+    uint32_t addr;
+    uint32_t nhop;
+    struct node_t *l; 
+    struct node_t *r; 
+} node_t;
+
+node_t *new_node();
+void complete_tree(node_t *node, node_t *ancestor);
+void build_L1(node_t *node, uint16_t *codewords, int level);
 
 uint32_t lookup_small_table(uint32_t dest_ip, void *table);
 uint32_t get_chunk_ptr(uint32_t dest_ip, uint32_t level, uint32_t pointer, small_table_t *s_table);
+uint16_t *build_map_table();
 
 #endif
