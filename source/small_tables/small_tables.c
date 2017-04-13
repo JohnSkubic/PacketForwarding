@@ -143,7 +143,7 @@ small_table_t *build_small_table(route_table_entry_t *table, int table_size) {
 
   uint16_t *maptable; // length = 676
   maptable = build_map_table();
-
+  build_s_table_map_table(s_table, maptable);
 
   /*  
   *
@@ -217,14 +217,37 @@ small_table_t *build_small_table(route_table_entry_t *table, int table_size) {
 
   set_L1_codeword_base(codewords, ptrs, maptable, s_table);
 
-  for(i =0; i < L1_N_CODEWORDS; i++) {
-    if((s_table->l1.codewords[i] & CODEWORD_10_BM) < 676)
-      printf("CODE_OFF: %d BASE_OFF: %d i: %d\n", (s_table->l1.codewords[i] & CODEWORD_6_BM) >> 10, s_table->l1.base[i/4], i);
-  }
+  //for(i =0; i < L1_N_CODEWORDS; i++) {
+  //  if((s_table->l1.codewords[i] & CODEWORD_10_BM) < 676)
+  //    printf("CODE_OFF: %d BASE_OFF: %d i: %d\n", (s_table->l1.codewords[i] & CODEWORD_6_BM) >> 10, s_table->l1.base[i/4], i);
+  //}
 
   return NULL;
 }
 
+void build_s_table_map_table(small_table_t *s_table,uint16_t *maptable) {
+  int i,j;
+  uint16_t bvect, mask;  
+  uint8_t count;
+  uint8_t first, second;
+
+  for(i = 0; i < 676; i++) {
+    count = 0;
+    bvect = maptable[i];
+    mask = 0x8000;
+    for(j = 0; j < 8; j++) {
+      if(bvect & mask) 
+        count++;
+      first = count;
+      mask = mask >> 1;
+      if(bvect & mask) 
+        count++;
+      second = count;
+      mask = mask >> 1;
+      s_table->maptable[i][j] = (first << 4) | (second & LBYTE);
+    }    
+  }
+}
 
 void set_L1_codeword_base(uint16_t *codewords, lnode_t *ptrs, uint16_t *maptable, small_table_t *s_table) {
   int i,j,k;
@@ -283,7 +306,6 @@ void set_L1_codeword_base(uint16_t *codewords, lnode_t *ptrs, uint16_t *maptable
 
       ten = get_maptable_idx(codewords[i], maptable);
       six = ptrs_in_bvects;
-      printf("Setting codeword[%d] six: %d ten: %d\n", i, six, ten);
       s_table->l1.codewords[i] = 0;
       s_table->l1.codewords[i] |= (six << 10);
       s_table->l1.codewords[i] |= ten & CODEWORD_10_BM; 

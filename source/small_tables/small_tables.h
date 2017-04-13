@@ -25,6 +25,9 @@
 #define MASK_6 0x003f
 #define MASK_10_MSB 0xffc0
 
+#define LBYTE 0x0f
+#define UBYTE 0xf0
+
 //L2 L3
 #define IX_2_3_BM   0x000000f0
 #define BIX_2_3_BM  0x000000c0
@@ -124,4 +127,5 @@ uint32_t lookup_small_table(uint32_t dest_ip, void *table);
 uint32_t get_chunk_ptr(uint32_t dest_ip, uint32_t level, uint32_t pointer, small_table_t *s_table);
 uint16_t *build_map_table();
 
+void build_s_table_map_table(small_table_t *s_table,uint16_t *maptable);
 #endif
