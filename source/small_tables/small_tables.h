@@ -71,6 +71,7 @@ typedef union chunk_t {
 
 typedef struct small_table_t {
   uint32_t *next_hop_table;
+  uint32_t num_entries;
   uint8_t maptable[676][8]; // Each index contains 2 ptrs (4 bits)
   cut_t   l1;
   chunk_t *l2;
@@ -90,7 +91,7 @@ void destroy_small_table(small_table_t *table);
 #define HEAD_UNDEF      3
 #define HEAD_TREE_ROOT  4
 
-// Linked List for building tree
+//  building tree
 typedef struct node_t {
     uint8_t type; // type of head 
     uint32_t addr;
@@ -99,9 +100,22 @@ typedef struct node_t {
     struct node_t *r; 
 } node_t;
 
+typedef struct lnode_t {
+  uint8_t idx;
+  uint8_t type;
+  uint32_t nhop;
+  struct lnode_t *next;
+} lnode_t;
+
+void add_node(lnode_t *head, uint8_t idx, uint8_t type, uint32_t nhop);
+node_t *get_node_by_idx(lnode_t *head, uint8_t idx);
+
+uint16_t get_nhop_idx(uint32_t *nhop_table, uint32_t nhop, int size);
+
 node_t *new_node();
-void complete_tree(node_t *node, node_t *ancestor);
-void build_L1(node_t *node, uint16_t *codewords, int level);
+void complete_tree(node_t *node, node_t *ancestor, int depth, uint32_t addr);
+void build_L1_codewords(node_t *node, uint16_t *codewords, lnode_t *ptrs, int level);
+void set_L1_codeword_base(uint16_t *codewords, lnode_t *ptrs, uint16_t *maptable, small_table_t *s_table);
 
 uint32_t lookup_small_table(uint32_t dest_ip, void *table);
 uint32_t get_chunk_ptr(uint32_t dest_ip, uint32_t level, uint32_t pointer, small_table_t *s_table);

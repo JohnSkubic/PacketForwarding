@@ -123,12 +123,23 @@ small_table_t *build_small_table(route_table_entry_t *table, int table_size) {
     return NULL;
   }
 
+  /*
+  *
+  * Fill in next hop table
+  */
+
+  for(i = 0; i < table_size; i++) {
+    s_table->next_hop_table[i] = table[i].next_hop_addr;
+    //printf("ADDR: %x NHOP: %d\n", table[i].dest_addr.address, table[i].next_hop_addr);
+  }
+  s_table->num_entries = table_size;
+
 
   /*
- *
- *  Build Maptable
- *
- */
+  *
+  *  Build Maptable
+  *
+  */
 
   uint16_t *maptable; // length = 676
   maptable = build_map_table();
@@ -136,7 +147,12 @@ small_table_t *build_small_table(route_table_entry_t *table, int table_size) {
   // Sort table by mask length
   mergesort(table, table_size, MASK_LEN);
 
-  /* Build Binary Tree Representation */
+  /*  
+  *
+  * Build Binary Tree Representation
+  *
+  */
+
   tree = new_node();
   tree->type = HEAD_TREE_ROOT;
 
@@ -170,7 +186,7 @@ small_table_t *build_small_table(route_table_entry_t *table, int table_size) {
   }
 
   // Complete Tree (all nodes have 0 or 2 leaves)
-  complete_tree(tree, tree);
+  complete_tree(tree, tree, 0, 0x00000000);
 
   /* 
   *
@@ -188,32 +204,123 @@ small_table_t *build_small_table(route_table_entry_t *table, int table_size) {
   uint16_t *codewords = malloc(sizeof(uint16_t) * L1_N_CODEWORDS); // actual codewords
   memset(codewords, 0, sizeof(uint16_t) * L1_N_CODEWORDS);
 
-  build_L1(tree, codewords, 0);
+  lnode_t *ptrs = malloc(sizeof(lnode_t) * L1_N_CODEWORDS); //ptrs for codewords
+  memset(ptrs, 0, sizeof(lnode_t) * L1_N_CODEWORDS);
+
+  build_L1_codewords(tree, codewords, ptrs, 0);
+
+  //for(i = 0; i < L1_N_CODEWORDS; i++) {
+  //  if(codewords[i] != 0)
+  //    printf("IDX: %d CODEWORD: %x\n", i, codewords[i]);
+  //}
+
+  set_L1_codeword_base(codewords, ptrs, maptable, s_table);
 
   return NULL;
 }
 
-void build_L1(node_t *node, uint16_t *codewords, int level) {
+
+void set_L1_codeword_base(uint16_t *codewords, lnode_t *ptrs, uint16_t *maptable, small_table_t *s_table) {
+  int i;
+  int ptr_cnt = 0;
+  int l2_ptr_cnt = 0;
+  uint32_t next_hop = 0;
+  lnode_t *last_ptr = NULL;
+  lnode_t *temp = NULL;
+  uint16_t nhop_idx;
+  uint16_t nhop_ptr;
+
+  for (i = 0; i < L1_N_CODEWORDS; i++) {
+    if((codewords[i] == 0) || (codewords[i] == 0x8000)) {// bit masks 0 & 1 have ptr directly encoded
+      // ten = upper 10bits + 676; six = lower six bits
+      temp = get_node_by_idx(&ptrs[i], 0); //0x8000 
+      if(temp != NULL)
+        last_ptr = temp;
+
+      nhop_idx = get_nhop_idx(s_table->next_hop_table, last_ptr->nhop, s_table->num_entries);
+      //set the codeword
+      s_table->l1.codewords[i] = 0;
+      s_table->l1.codewords[i] |= (nhop_idx & CODEWORD_6_BM) << 10;
+      s_table->l1.codewords[i] |= (((nhop_idx & CODEWORD_10_BM) >> 6) + 676);
+      //printf("For idx: %x Build Codeword: %x\n", nhop_idx, s_table->l1.codewords[i]);
+    } else {
+      // iterate through each active head (start with MSB)
+
+    }
+  }
+
+}
+
+uint16_t get_nhop_idx(uint32_t *nhop_table, uint32_t nhop, int size) {
+  int i;
+  uint32_t idx = -1;
+  for(i = 0; i < size; i++) {
+    if (nhop_table[i] == nhop) {
+      idx = i;
+      break;
+    }
+  }
+  return idx;
+}
+
+
+node_t *get_node_by_idx(lnode_t *head, uint8_t idx) {
+  lnode_t *temp = head;
+
+  if (temp->next == NULL) return NULL;
+  else temp = temp->next;
+
+  while(temp != NULL) {
+    if(temp->idx == idx) return temp;
+  }
+  return NULL;
+}
+
+void add_node(lnode_t *head, uint8_t idx, uint8_t type, uint32_t nhop) {
+  lnode_t *temp = head;
+
+  while(temp->next != NULL) {
+    temp = temp->next;
+    //newer node data is always better (lower down the tree)
+    if (temp->idx == idx) {
+      temp->type = type;
+      temp->nhop = nhop;
+      return;
+    }
+  }
+
+  temp->next = malloc(sizeof(lnode_t));
+  temp->next->idx = idx;
+  temp->next->type = type;
+  temp->next->nhop = nhop;
+  temp->next->next = NULL;
+}
+
+void build_L1_codewords(node_t *node, uint16_t *codewords, lnode_t *ptrs, int level) {
   int codeword_num;
   int base_num;
   int i;
   uint16_t temp;
 
-  if (level == 15) { // L1 stops at cut 16
-    if (node->type == HEAD_GENUINE) {
-      codeword_num = (node->addr >> 20);
-      codewords[codeword_num] |= 0x8000 >> ((node->addr & BIT_BM) >> 16);
-    } else if (node->type == HEAD_ROOT) {
-      codeword_num = (node->addr >> 20);
-      codewords[codeword_num] |= 0x8000 >> ((node->addr & BIT_BM) >> 16);
-    }
-  } else if (node->type == HEAD_GENUINE) { // Fill in entry for members
+  if (level == 16) { // L1 stops at cut 16
     codeword_num = (node->addr >> 20);
     codewords[codeword_num] |= 0x8000 >> ((node->addr & BIT_BM) >> 16);
+    if (node->type == HEAD_GENUINE) {
+      //printf("HG ADDR: %x BIT: %x SHIFT: %x NH: %x\n",node->addr, node->addr & BIT_BM, (node->addr & BIT_BM) >> 16, node->nhop);
+      add_node(&ptrs[codeword_num], (node->addr & BIT_BM)>>16, PTR_TYPE_NH, node->nhop);
+    } else if (node->type == HEAD_ROOT) {
+      //printf("ADDR: %x BIT: %x SHIFT: %x\n",node->addr, node->addr & BIT_BM, (node->addr & BIT_BM) >> 16);
+      add_node(&ptrs[codeword_num], (node->addr & BIT_BM)>>16, PTR_TYPE_SPARSE, node->nhop); //TODO: Figure out actual L2 type
+    }
+  } else if (node->type == HEAD_GENUINE) { // Fill in entry for members
+    //printf("NLC ADDR: %x BIT: %x SHIFT: %x level: %d\n",node->addr, node->addr & BIT_BM, (node->addr & BIT_BM) >> 16, level);
+    codeword_num = (node->addr >> 20);
+    codewords[codeword_num] |= 0x8000 >> ((node->addr & BIT_BM) >> 16);
+    add_node(&ptrs[codeword_num], (node->addr & BIT_BM)>>16, PTR_TYPE_NH, node->nhop);
   }
   else { // continue recursion
-    build_L1(node->l, codewords, level+1);
-    build_L1(node->r, codewords, level+1);
+    build_L1_codewords(node->l, codewords, ptrs, level+1);
+    build_L1_codewords(node->r, codewords, ptrs, level+1);
   }
 }
 
@@ -233,7 +340,7 @@ inline uint16_t set_codeword_idx(uint16_t codeword, uint16_t idx) {
   return ((codeword & ~CODEWORD_10_BM) | ((idx << 6) & CODEWORD_10_BM));
 }
 
-void complete_tree(node_t *node, node_t *ancestor) {
+void complete_tree(node_t *node, node_t *ancestor, int depth, uint32_t addr) {
   if (node->type == HEAD_GENUINE) {
     ancestor = node;
 
@@ -249,21 +356,21 @@ void complete_tree(node_t *node, node_t *ancestor) {
     if (node->l == NULL) {
       node->l = new_node();
       node->l->type = HEAD_GENUINE;
-      node->l->addr = ancestor->addr;
+      node->l->addr = addr;
       node->l->nhop = ancestor->nhop;
-      complete_tree(node->r, ancestor);
+      complete_tree(node->r, ancestor, depth+1, addr | (0x80000000 >> depth));
     } else { // node->r
       node->r = new_node();
       node->r->type = HEAD_GENUINE;
-      node->r->addr = ancestor->addr;
+      node->r->addr = addr;
       node->r->nhop = ancestor->nhop;
-      complete_tree(node->l, ancestor);
+      complete_tree(node->l, ancestor, depth+1, addr);
     } 
   } else {
     if (node->r != NULL)
-      complete_tree(node->r, ancestor);
+      complete_tree(node->r, ancestor, depth+1, addr | (0x80000000 >> depth));
     if (node->l != NULL)
-      complete_tree(node->l, ancestor);
+      complete_tree(node->l, ancestor, depth+1, addr);
   }
 }
 
