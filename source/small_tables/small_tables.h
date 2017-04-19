@@ -57,9 +57,10 @@ uint16_t set_codeword_idx(uint16_t codeword, uint16_t idx);
 #define PTR_TYPE_SPARSE     1 
 #define PTR_TYPE_DENSE      2
 #define PTR_TYPE_VERYDENSE  3
+#define PTR_TYPE_CHUNK      4
 
 typedef struct chunk_sparse_t {
-  uint32_t *heads;
+  uint8_t *heads;
   uint16_t *pointers;
 } chunk_sparse_t;
 
@@ -78,6 +79,11 @@ typedef struct small_table_t {
   uint32_t *next_hop_table;
   uint32_t num_entries;
   uint8_t maptable[676][8]; // Each index contains 2 ptrs (4 bits)
+  int n_l1_ptrs;
+  int n_l2_ptrs;
+  int n_l3_ptrs;
+  int n_l2_chunks;
+  int n_l3_chunks;
   cut_t   l1;
   chunk_t *l2;
   chunk_t *l3;
@@ -112,8 +118,20 @@ typedef struct lnode_t {
   struct lnode_t *next;
 } lnode_t;
 
+//building l2/l3
+void find_level_sizes(node_t *tree, int clevel, int minlevel, int maxlevel, int *num_chunks, int *num_ptrs); 
+int build_chunk_trees_rec(small_table_t *s_table, node_t *head, int cut, int max_depth, int chunk_num, int clevel, uint8_t *i_types, uint8_t *o_types, int *gcount, uint16_t *last_ptr);
+void build_chunk_trees(small_table_t *s_table, node_t *head, int cut, int max_depth, int chunk_num, uint8_t *i_types, uint8_t *o_types, int *gcount, uint16_t *last_ptr);
+lnode_t *build_array_heads(node_t *node, int count, int cut);
+chunk_t build_sparse_chunk(small_table_t *s_table, node_t *head, int cut, int max_depth, uint8_t *i_types, int *gcount, uint16_t *last_ptr);
+chunk_t build_dense_chunk(small_table_t *s_table, node_t *head, int cut, int max_depth, uint8_t *i_types, int *gcount, uint16_t *last_ptr);
+chunk_t build_vdense_chunk(small_table_t *s_table, node_t *head, int cut, int max_depth, uint8_t *i_types, int *gcount, uint16_t *last_ptr);
+void rec_set_codewords(small_table_t *s_table, uint16_t *codewords, node_t *node, int count, int cut, lnode_t* ptrs);
+void set_codewords_ptrs(small_table_t *s_table, cut_t *cut_i, uint16_t *codewords, lnode_t *ptr_list, int codes_per_base, int cut, uint8_t *i_types, int *gcount, uint16_t *last_ptr);
+
 void add_node(lnode_t *head, uint8_t idx, uint8_t type, uint32_t nhop);
 lnode_t *get_node_by_idx(lnode_t *head, uint8_t idx);
+void destroy_node(lnode_t *head);
 
 uint16_t get_maptable_idx(uint16_t bitvect, uint16_t *maptable);
 uint16_t get_nhop_idx(uint32_t *nhop_table, uint32_t nhop, int size);
