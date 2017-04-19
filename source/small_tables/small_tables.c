@@ -107,7 +107,7 @@ uint16_t *build_map_table() {
 small_table_t *build_small_table(route_table_entry_t *table, int table_size) {
 
   small_table_t *s_table;
-  int i,j,k;
+  int i,k;
   node_t *tree = NULL;
   node_t *temp = NULL;
   node_t *curr = NULL;
@@ -216,7 +216,7 @@ small_table_t *build_small_table(route_table_entry_t *table, int table_size) {
   s_table->l3_ptr_table = malloc(sizeof(uint16_t) * num_ptrs);
 
   count = 0;
-  build_chunk_trees_rec(s_table, tree, 24, 32, 0, 0, NULL, types_l3, &count, &last_ptr); // builds the tree starting at the give cut
+  build_chunk_trees_rec(s_table, tree, maptable, 24, 32, 0, 0, NULL, types_l3, &count, &last_ptr); // builds the tree starting at the give cut
   
 
   // free l3 memory
@@ -243,7 +243,7 @@ small_table_t *build_small_table(route_table_entry_t *table, int table_size) {
   s_table->l2_ptr_table = malloc(sizeof(uint16_t) * num_ptrs);  
 
   count = 0;
-  build_chunk_trees_rec(s_table, tree, 16, 24, 0, 0, types_l3, types_l2, &count, &last_ptr);
+  build_chunk_trees_rec(s_table, tree, maptable, 16, 24, 0, 0, types_l3, types_l2, &count, &last_ptr);
 
   /* 
   *
@@ -276,8 +276,15 @@ small_table_t *build_small_table(route_table_entry_t *table, int table_size) {
   lnode_t *ptrs = malloc(sizeof(lnode_t) * L1_N_CODEWORDS); //ptrs for codewords
   memset(ptrs, 0, sizeof(lnode_t) * L1_N_CODEWORDS);
 
-  rec_set_codewords(s_table, codewords, tree, 16, 0, ptrs);
-  set_codewords_ptrs(s_table, &(s_table->l1), codewords, ptrs, 4, 0, types_l2, &count, &last_ptr); 
+  rec_set_codewords(s_table, codewords, tree, maptable, 16, 0, ptrs);
+  set_codewords_ptrs(s_table, &(s_table->l1), codewords, ptrs, maptable, 4, 0, types_l2, &count, &last_ptr); 
+
+  // free used memory
+  //free(codewords);
+  for (i = 0; i < L1_N_CODEWORDS; i++) {
+    destroy_node(ptrs[i].next); 
+  }
+  free(ptrs);
 
   return NULL;
 }
@@ -305,21 +312,21 @@ void find_level_sizes(node_t *tree, int clevel, int minlevel, int maxlevel, int 
       *num_chunks = *num_chunks + 1;
 }
 
-int build_chunk_trees_rec(small_table_t *s_table, node_t *head, int cut, int max_depth, int chunk_num, int clevel, uint8_t *i_types, uint8_t *o_types, int *gcount, uint16_t *last_ptr) {
+int build_chunk_trees_rec(small_table_t *s_table, node_t *head, uint16_t *maptable, int cut, int max_depth, int chunk_num, int clevel, uint8_t *i_types, uint8_t *o_types, int *gcount, uint16_t *last_ptr) {
   if (clevel < cut) {
     if (head->l != NULL)
-      chunk_num += build_chunk_trees_rec(s_table, head->l, cut, max_depth, chunk_num, clevel+1, i_types, o_types, gcount, last_ptr);
+      chunk_num += build_chunk_trees_rec(s_table, head->l, maptable, cut, max_depth, chunk_num, clevel+1, i_types, o_types, gcount, last_ptr);
     if (head->r != NULL)
-      chunk_num += build_chunk_trees_rec(s_table, head->r, cut, max_depth, chunk_num, clevel+1, i_types, o_types, gcount, last_ptr);
+      chunk_num += build_chunk_trees_rec(s_table, head->r, maptable, cut, max_depth, chunk_num, clevel+1, i_types, o_types, gcount, last_ptr);
   }
   else if ((clevel == cut) && (head->type == HEAD_ROOT)){
-    build_chunk_trees(s_table, head, cut, max_depth, chunk_num, i_types, o_types, gcount, last_ptr);
+    build_chunk_trees(s_table, head, maptable, cut, max_depth, chunk_num, i_types, o_types, gcount, last_ptr);
     chunk_num++;
   }
   return chunk_num;
 }
 
-void build_chunk_trees(small_table_t *s_table, node_t *head, int cut, int max_depth, int chunk_num, uint8_t *i_types, uint8_t *o_types, int *gcount, uint16_t *last_ptr) {
+void build_chunk_trees(small_table_t *s_table, node_t *head, uint16_t *maptable, int cut, int max_depth, int chunk_num, uint8_t *i_types, uint8_t *o_types, int *gcount, uint16_t *last_ptr) {
   printf("Building chunk number: %d\n", chunk_num); 
   int num_ptrs = 0;
   int num_chunks = 0;
@@ -342,11 +349,11 @@ void build_chunk_trees(small_table_t *s_table, node_t *head, int cut, int max_de
     o_types[chunk_num] = PTR_TYPE_SPARSE; 
   } else if (num_ptrs <= 64) { //DENSE
     printf("Building dense chunk\n");
-    chunk_arr[chunk_num] = build_dense_chunk(s_table, head, cut, max_depth, i_types, gcount, last_ptr);
+    chunk_arr[chunk_num] = build_dense_chunk(s_table, head, maptable, cut, max_depth, i_types, gcount, last_ptr);
     o_types[chunk_num] = PTR_TYPE_DENSE; 
   } else { // VERYDENSE
     printf("Building very dense chunk\n");
-    chunk_arr[chunk_num] = build_vdense_chunk(s_table, head, cut, max_depth, i_types, gcount, last_ptr);
+    chunk_arr[chunk_num] = build_vdense_chunk(s_table, head, maptable, cut, max_depth, i_types, gcount, last_ptr);
     o_types[chunk_num] = PTR_TYPE_VERYDENSE; 
   } 
 
@@ -357,16 +364,6 @@ void build_chunk_trees(small_table_t *s_table, node_t *head, int cut, int max_de
 chunk_t build_sparse_chunk(small_table_t *s_table, node_t *head, int cut, int max_depth, uint8_t *i_types, int *gcount, uint16_t *last_ptr) {
   chunk_t chunk;
   lnode_t *arr;
-  uint16_t *ptr_table;
-  int *ptrs;
-
-  if (cut == 16) {
-    ptr_table = s_table->l2;
-    ptrs = &(s_table->n_l2_ptrs);
-  } else {
-    ptr_table = s_table->l3;
-    ptrs = &(s_table->n_l3_ptrs);
-  }
 
   // allocate space ...
   chunk.sparse.heads    = malloc(sizeof(uint8_t) * 8);
@@ -440,22 +437,12 @@ lnode_t *build_array_heads(node_t *node, int count, int cut) {
 
 /** FUNCTIONS FOR BUILDING DENSE/VDENSE CHUNK **/
 
-chunk_t build_vdense_chunk(small_table_t *s_table, node_t *head, int cut, int max_depth, uint8_t *i_types, int *gcount, uint16_t *last_ptr) {
+chunk_t build_vdense_chunk(small_table_t *s_table, node_t *head, uint16_t *maptable, int cut, int max_depth, uint8_t *i_types, int *gcount, uint16_t *last_ptr) {
 
   chunk_t chunk;
   cut_t *cut_i = &(chunk.dense.cut);
-  uint16_t *ptr_table;
-  int *ptrs;
   uint16_t *codewords;
   int i;
-
-  if (cut == 16) {
-    ptr_table = s_table->l2;
-    ptrs = &(s_table->n_l2_ptrs);
-  } else {
-    ptr_table = s_table->l3;
-    ptrs = &(s_table->n_l3_ptrs);
-  }
 
   // build codewords
 
@@ -468,36 +455,27 @@ chunk_t build_vdense_chunk(small_table_t *s_table, node_t *head, int cut, int ma
   lnode_t *ptr_list = malloc(sizeof(lnode_t) * 16);
   memset(ptr_list, 0, sizeof(lnode_t) * 16);
 
-  rec_set_codewords(s_table, codewords, head, 8, cut, ptr_list);
-  set_codewords_ptrs(s_table, cut_i, codewords, ptr_list, 4, cut, i_types, gcount, last_ptr); 
+  rec_set_codewords(s_table, codewords, head, maptable, 8, cut, ptr_list);
+  set_codewords_ptrs(s_table, cut_i, codewords, ptr_list, maptable, 4, cut, i_types, gcount, last_ptr); 
 
   // dense needs bases fixed
 
   // free used memory
   free(codewords);
   for (i = 0; i < 16; i++) {
-    //destroy_node(ptr_list[i].next); //TODO: This causes segfault
+    destroy_node(ptr_list[i].next); 
   }
   free(ptr_list);
 
+  return chunk;
 }
 
-chunk_t build_dense_chunk(small_table_t *s_table, node_t *head, int cut, int max_depth, uint8_t *i_types, int *gcount, uint16_t *last_ptr) {
+chunk_t build_dense_chunk(small_table_t *s_table, node_t *head, uint16_t *maptable, int cut, int max_depth, uint8_t *i_types, int *gcount, uint16_t *last_ptr) {
 
   chunk_t chunk;
   cut_t *cut_i = &(chunk.dense.cut);
-  uint16_t *ptr_table;
-  int *ptrs;
   uint16_t *codewords;
   int i;
-
-  if (cut == 16) {
-    ptr_table = s_table->l2;
-    ptrs = &(s_table->n_l2_ptrs);
-  } else {
-    ptr_table = s_table->l3;
-    ptrs = &(s_table->n_l3_ptrs);
-  }
 
   // build codewords
 
@@ -510,28 +488,28 @@ chunk_t build_dense_chunk(small_table_t *s_table, node_t *head, int cut, int max
   lnode_t *ptr_list = malloc(sizeof(lnode_t) * 16);
   memset(ptr_list, 0, sizeof(lnode_t) * 16);
 
-  rec_set_codewords(s_table, codewords, head, 8, cut, ptr_list);
-  set_codewords_ptrs(s_table, cut_i, codewords, ptr_list, 16, cut, i_types, gcount, last_ptr); 
+  rec_set_codewords(s_table, codewords, head, maptable, 8, cut, ptr_list);
+  set_codewords_ptrs(s_table, cut_i, codewords, ptr_list, maptable, 16, cut, i_types, gcount, last_ptr); 
 
   // dense needs bases fixed
 
   // free used memory
   free(codewords);
   for (i = 0; i < 16; i++) {
-    //destroy_node(ptr_list[i].next); //TODO: This causes segfault
+    destroy_node(ptr_list[i].next); 
   }
   free(ptr_list);
 
+  return chunk;
 }
 
 // sets the codewords and bases and pointer table for the current chunk
-void set_codewords_ptrs(small_table_t *s_table, cut_t *cut_i, uint16_t *codewords, lnode_t *ptr_list, int codes_per_base, int cut, uint8_t *i_types, int *gcount, uint16_t *last_ptr) {
+void set_codewords_ptrs(small_table_t *s_table, cut_t *cut_i, uint16_t *codewords, lnode_t *ptr_list, uint16_t *maptable, int codes_per_base, int cut, uint8_t *i_types, int *gcount, uint16_t *last_ptr) {
   uint16_t *ptr_table;
-  uint16_t *ptrs; 
+  int *ptrs; 
   int base_count;
   int ptr_count;
   int n_codewords;
-  int codewords_per_base;
   int i,j;
   int curr_code;
   int ptr_off;
@@ -591,7 +569,7 @@ void set_codewords_ptrs(small_table_t *s_table, cut_t *cut_i, uint16_t *codeword
       } // END - nhop pointer encoded directly in codeword 
 
       else { // pointer will be stored in pointer table
-        ten = get_maptable_idx(codeword_temp, s_table->maptable);
+        ten = get_maptable_idx(codeword_temp, maptable); 
         six = ptr_count;
         cut_i->codewords[curr_code] = (six << 10) | ten;
         while(temp != NULL) {
@@ -627,25 +605,16 @@ void set_codewords_ptrs(small_table_t *s_table, cut_t *cut_i, uint16_t *codeword
 }
 
 // sets codewords linked list of pointers per codeword (needed to detect 0 and 1 next hop entries)
-void rec_set_codewords(small_table_t *s_table, uint16_t *codewords, node_t *node, int count, int cut, lnode_t* ptrs) {
-  lnode_t *temp;
-  lnode_t *r;
-  lnode_t *l;
+void rec_set_codewords(small_table_t *s_table, uint16_t *codewords, node_t *node, uint16_t *maptable, int count, int cut, lnode_t* ptrs) {
   uint8_t addr;
   int idx;
   uint8_t bit_num;
   
   if (cut == 16) { //l2
-    //ptr_table = s_table->l2_ptr_table;
-    //ptrs = &(s_table->n_l2_ptrs);
     addr = (node->addr & 0x0000ff00) >> 8;
   } else if (cut == 24){ //l3
-    //ptr_table = s_table->l3_ptr_table;
-    //ptrs = &(s_table->n_l3_ptrs);
     addr = (node->addr & 0x00000ff);
   } else {// l1
-    //ptr_table = s_table->l1_ptr_table;
-    //ptrs = &(s_table->n_l1_ptrs);
     addr = (node->addr & 0xffff0000) >> 16;
   }
 
@@ -681,9 +650,9 @@ void rec_set_codewords(small_table_t *s_table, uint16_t *codewords, node_t *node
     *ptrs = *ptrs + 1;*/
   } else { // Recurse
     if (node->l != NULL)
-      rec_set_codewords(s_table, codewords, node->l,count-1, cut, ptrs);
+      rec_set_codewords(s_table, codewords, node->l, maptable, count-1, cut, ptrs);
     if (node->r != NULL)
-      rec_set_codewords(s_table, codewords, node->r,count-1, cut, ptrs);
+      rec_set_codewords(s_table, codewords, node->r, maptable, count-1, cut, ptrs);
   }
 }
 
@@ -713,89 +682,6 @@ void build_s_table_map_table(small_table_t *s_table,uint16_t *maptable) {
       mask = mask >> 1;
       s_table->maptable[i][j] = (first << 4) | (second & LBYTE);
     }    
-  }
-}
-
-void set_L1_codeword_base(uint16_t *codewords, lnode_t *ptrs, uint16_t *maptable, small_table_t *s_table) {
-  int i,j,k;
-  int ptr_cnt = 0;
-  int l2_ptr_cnt = 0;
-  uint32_t next_hop = 0;
-  lnode_t *last_ptr = NULL;
-  lnode_t *temp = NULL;
-  uint16_t nhop_idx;
-  uint16_t nhop_ptr;
-  uint16_t mask;
-  int ptrs_in_bvects = 0;
-  uint16_t ten,six;
-
-
-  // Determine size of L1 PTR TABLE and allocate space
-  ptr_cnt = 0;
-  for (i=0; i < L1_N_CODEWORDS;i++) {
-    if(!((codewords[i] == 0) || (codewords[i] == 0x8000))) {
-      for (j = 0; j < 16; j++) {
-        if (codewords[i] & mask) {
-          ptr_cnt++; 
-        }
-        mask = mask >> 1;
-      }
-    }
-  }
-
-  s_table->l1_ptr_table = malloc(sizeof(uint16_t) * ptr_cnt);
-
-
-  ptr_cnt = 0;
-  for (i = 0; i < L1_N_CODEWORDS; i++) {
-    // set 10 bit based on codeword
-    if(i%4 == 0) {
-      s_table->l1.base[i/4] = ptr_cnt;
-      ptrs_in_bvects = 0;
-    }
-
-    if((codewords[i] == 0) || (codewords[i] == 0x8000)) {// bit masks 0 & 1 have ptr directly encoded
-      // ten = upper 10bits + 676; six = lower six bits
-      temp = get_node_by_idx(&ptrs[i], 0); //0x8000 
-      if(temp != NULL)
-        last_ptr = temp;
-
-      nhop_idx = get_nhop_idx(s_table->next_hop_table, last_ptr->nhop, s_table->num_entries);
-      //set the codeword
-      s_table->l1.codewords[i] = 0;
-      s_table->l1.codewords[i] |= (nhop_idx & MASK_6) << 10;
-      s_table->l1.codewords[i] |= (((nhop_idx & MASK_10_MSB) >> 6) + 676);
-      //printf("For idx: %x Build Codeword: %x\n", nhop_idx, s_table->l1.codewords[i]);
-    } else {
-      // iterate through each active head (start with MSB)
-      
-      // Build 6bit and 10bit codeword
-
-      ten = get_maptable_idx(codewords[i], maptable);
-      six = ptrs_in_bvects;
-      s_table->l1.codewords[i] = 0;
-      s_table->l1.codewords[i] |= (six << 10);
-      s_table->l1.codewords[i] |= ten & CODEWORD_10_BM; 
-
-      mask = 0x8000;
-      for (j = 0; j < 16; j++) {
-        if (codewords[i] & mask) {
-          temp = get_node_by_idx(&ptrs[i], j);
-          last_ptr = temp;
-          if(temp->type != PTR_TYPE_NH) { // ptr to L2 Chunk
-            //TODO: L2 - figure out type here
-            s_table->l1_ptr_table[ptr_cnt] = l2_ptr_cnt | (PTR_TYPE_SPARSE << 14); 
-            l2_ptr_cnt++;
-          }
-          else { // add index in nh table to L1 table
-            s_table->l1_ptr_table[ptr_cnt] = get_nhop_idx(s_table->next_hop_table, last_ptr->nhop, s_table->num_entries) & ~HEAD_PTR_TYPE_MASK;
-          }
-          ptrs_in_bvects++;
-          ptr_cnt++;
-        }
-        mask = mask >> 1;
-      }
-    }
   }
 }
 
@@ -868,57 +754,13 @@ void destroy_node(lnode_t *node) {
 
   if (node == NULL) return;
   
-  temp = node->next;
   while (node != NULL) {
+    temp = node->next;
     free(node);
     node = temp;
-    temp = node->next;
   }
 }
 
-void build_L1_codewords(node_t *node, uint16_t *codewords, lnode_t *ptrs, int level) {
-  int codeword_num;
-  int base_num;
-  int i;
-  uint16_t temp;
-
-  if (level == 16) { // L1 stops at cut 16
-    codeword_num = (node->addr >> 20);
-    codewords[codeword_num] |= 0x8000 >> ((node->addr & BIT_BM) >> 16);
-    if (node->type == HEAD_GENUINE) {
-      //printf("HG ADDR: %x BIT: %x SHIFT: %x NH: %x\n",node->addr, node->addr & BIT_BM, (node->addr & BIT_BM) >> 16, node->nhop);
-      add_node(&ptrs[codeword_num], (node->addr & BIT_BM)>>16, PTR_TYPE_NH, node->nhop);
-    } else if (node->type == HEAD_ROOT) {
-      //printf("ADDR: %x BIT: %x SHIFT: %x\n",node->addr, node->addr & BIT_BM, (node->addr & BIT_BM) >> 16);
-      add_node(&ptrs[codeword_num], (node->addr & BIT_BM)>>16, PTR_TYPE_SPARSE, node->nhop); //TODO: Figure out actual L2 type
-    }
-  } else if (node->type == HEAD_GENUINE) { // Fill in entry for members
-    //printf("NLC ADDR: %x BIT: %x SHIFT: %x level: %d\n",node->addr, node->addr & BIT_BM, (node->addr & BIT_BM) >> 16, level);
-    codeword_num = (node->addr >> 20);
-    codewords[codeword_num] |= 0x8000 >> ((node->addr & BIT_BM) >> 16);
-    add_node(&ptrs[codeword_num], (node->addr & BIT_BM)>>16, PTR_TYPE_NH, node->nhop);
-  }
-  else { // continue recursion
-    build_L1_codewords(node->l, codewords, ptrs, level+1);
-    build_L1_codewords(node->r, codewords, ptrs, level+1);
-  }
-}
-
-inline uint16_t get_codeword_off(uint16_t codeword) {
-  return (codeword & CODEWORD_6_BM);
-}
-
-inline uint16_t get_codeword_idx(uint16_t codeword) {
-  return ((codeword & CODEWORD_10_BM) >> 6);
-}
-
-inline uint16_t set_codeword_off(uint16_t codeword, uint16_t off) {
-  return ((codeword & ~CODEWORD_6_BM) | (off & CODEWORD_6_BM));
-}
-
-inline uint16_t set_codeword_idx(uint16_t codeword, uint16_t idx) {
-  return ((codeword & ~CODEWORD_10_BM) | ((idx << 6) & CODEWORD_10_BM));
-}
 
 void complete_tree(node_t *node, node_t *ancestor, int depth, uint32_t addr) {
   if (node->type == HEAD_GENUINE) {
@@ -977,50 +819,12 @@ void destroy_small_table(small_table_t *table) {
 uint32_t lookup_small_table(uint32_t dest_ip, void *table) {
   small_table_t *s_table;
 
-  uint32_t ix, bix, bit, pix, pointer;
+  //uint32_t ix, bix, bit, pix, pointer;
 
-  uint16_t codeword, ten, six;
+  //uint16_t codeword, ten, six;
 
-  uint8_t maptable_off;
+  //uint8_t maptable_off;
 
   s_table = (small_table_t *)table;
-
-  /* Lookup Level 1 */
-  
-  ix  = (IX_BM  & dest_ip) >> 20;
-  bix = (BIX_BM & dest_ip) >> 22;
-  bit = (BIT_BM & dest_ip) >> 16;
-
-  codeword = s_table->l1.codewords[ix];
-  six = (codeword & CODEWORD_6_BM) >> 10;
-  ten = (codeword & CODEWORD_10_BM);
-
-  maptable_off = s_table->maptable[ten][bit >> 1];
-  maptable_off = (bit & 0x01) ? maptable_off >> 4 : maptable_off & 0x0f;
-
-  pix = s_table->l1.base[bix] + six + maptable_off;
-
-  pointer = s_table->l1_ptr_table[pix];
-
-  if (!(pointer & HEAD_PTR_TYPE_MASK))  // if nonzero, pointer to l2
-    return s_table->next_hop_table[pointer & HEAD_PTR_PTR_MASK];
-
-  /* Lookup Level 2 */
-
-  pointer = get_chunk_ptr(dest_ip, 2, pointer, s_table);
-
-  if (!(pointer & HEAD_PTR_TYPE_MASK))  // if nonzero, pointer to l3
-    return s_table->next_hop_table[pointer & HEAD_PTR_PTR_MASK];
- 
-  /* Lookup Level 3 */
-  
-  pointer = get_chunk_ptr(dest_ip, 3, pointer, s_table);
-
-  return s_table->next_hop_table[pointer & HEAD_PTR_PTR_MASK];
-}
-
-
-
-uint32_t get_chunk_ptr (uint32_t dest_ip, uint32_t level, uint32_t pointer, small_table_t *s_table) {
-   return 0;
+  return 0;
 }
