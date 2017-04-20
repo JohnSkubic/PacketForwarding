@@ -131,5 +131,9 @@ node_t *new_node();
 void complete_tree(node_t *node, node_t *ancestor, int depth, uint32_t addr);
 uint32_t lookup_small_table(uint32_t dest_ip, void *table);
 uint16_t *build_map_table();
-void build_s_table_map_table(small_table_t *s_table,uint16_t *maptable);
+void build_s_table_map_table(small_table_t *s_table,uint16_t *maptable);uint16_t get_ptr_l1(small_table_t *s_table, uint16_t addr);
+uint16_t get_ptr_sparse(chunk_t *chunk, uint8_t addr);
+uint16_t get_ptr_dense(small_table_t *s_table, chunk_t *chunk, uint8_t addr, int level);
+uint16_t get_ptr_vdense(small_table_t *s_table, chunk_t *chunk, uint8_t addr, int level);
+
 #endif

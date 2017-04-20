@@ -130,7 +130,6 @@ small_table_t *build_small_table(route_table_entry_t *table, int table_size) {
 
   for(i = 0; i < table_size; i++) {
     s_table->next_hop_table[i] = table[i].next_hop_addr;
-    printf("ADDR: %x NHOP: %d\n", table[i].dest_addr.address, table[i].next_hop_addr);
   }
   s_table->num_entries = table_size;
 
@@ -281,12 +280,13 @@ small_table_t *build_small_table(route_table_entry_t *table, int table_size) {
 
   // free used memory
   //free(codewords);
+  free(maptable);
   for (i = 0; i < L1_N_CODEWORDS; i++) {
     destroy_node(ptrs[i].next); 
   }
   free(ptrs);
 
-  return NULL;
+  return s_table;
 }
 
 // num_chunks - the number of chunks starting at level minlevel
@@ -586,6 +586,7 @@ void set_codewords_ptrs(small_table_t *s_table, cut_t *cut_i, uint16_t *codeword
           else {
             ptr_temp = get_nhop_idx(s_table->next_hop_table, temp->nhop, s_table->num_entries);
           }
+
           ptr_table[*ptrs] = ptr_temp;
           *last_ptr = ptr_temp; 
           *ptrs = *ptrs + 1;
@@ -606,7 +607,7 @@ void set_codewords_ptrs(small_table_t *s_table, cut_t *cut_i, uint16_t *codeword
 
 // sets codewords linked list of pointers per codeword (needed to detect 0 and 1 next hop entries)
 void rec_set_codewords(small_table_t *s_table, uint16_t *codewords, node_t *node, uint16_t *maptable, int count, int cut, lnode_t* ptrs) {
-  uint8_t addr;
+  uint16_t addr;
   int idx;
   uint8_t bit_num;
   
@@ -632,22 +633,6 @@ void rec_set_codewords(small_table_t *s_table, uint16_t *codewords, node_t *node
       add_node(&ptrs[idx], bit_num, PTR_TYPE_CHUNK, node->nhop);
     }
 
-    /*
-    
-    // add entry to pointer table and increment pointer counter
-    if ( node->type == HEAD_GENUINE) {
-      ptr_table[*ptrs] = get_nhop_idx(s_table->next_hop_table, node->nhop, s_table->num_entries);
-    } else if (node->type == HEAD_ROOT) {
-      ptr_table[*ptrs] = *gcount;
-      if(i_types[*gcount] == PTR_TYPE_SPARSE)
-        ptr_table[*ptrs] |= (PTR_TYPE_SPARSE << 14);
-      else if (i_types[*gcount] == PTR_TYPE_DENSE)
-        ptr_table[*ptrs] |= (PTR_TYPE_DENSE << 14);
-      else if (i_types[*gcount] == PTR_TYPE_VERYDENSE) 
-        ptr_table[*ptrs] |= (PTR_TYPE_VERYDENSE << 14);
-      *gcount = *gcount + 1;
-    }
-    *ptrs = *ptrs + 1;*/
   } else { // Recurse
     if (node->l != NULL)
       rec_set_codewords(s_table, codewords, node->l, maptable, count-1, cut, ptrs);
@@ -655,10 +640,6 @@ void rec_set_codewords(small_table_t *s_table, uint16_t *codewords, node_t *node
       rec_set_codewords(s_table, codewords, node->r, maptable, count-1, cut, ptrs);
   }
 }
-
-
-
-
 
 
 void build_s_table_map_table(small_table_t *s_table,uint16_t *maptable) {
@@ -816,15 +797,174 @@ void destroy_small_table(small_table_t *table) {
 }
 
 
+/*
+ *
+ *  Code for searching the Lookup Table
+ *
+ */
+
 uint32_t lookup_small_table(uint32_t dest_ip, void *table) {
   small_table_t *s_table;
-
-  //uint32_t ix, bix, bit, pix, pointer;
-
-  //uint16_t codeword, ten, six;
-
-  //uint8_t maptable_off;
+  chunk_t *chunk;
+  uint16_t curr_ptr;
+  uint8_t ptr_type;
+  uint8_t chunk_addr;
 
   s_table = (small_table_t *)table;
-  return 0;
+
+  curr_ptr = get_ptr_l1(s_table, dest_ip >> 16);
+  ptr_type = curr_ptr >> 14;
+
+  // Search L2
+  if (ptr_type == PTR_TYPE_NH) 
+    return s_table->next_hop_table[curr_ptr];
+  else { //ptr to lower chunk
+    chunk = &(s_table->l2[curr_ptr & 0x3fff]);
+    chunk_addr = (dest_ip & 0x0000ff00) >> 8;
+    if (ptr_type == PTR_TYPE_SPARSE) 
+      curr_ptr = get_ptr_sparse(chunk, chunk_addr);
+    else if (ptr_type == PTR_TYPE_DENSE) 
+      curr_ptr = get_ptr_dense(s_table, chunk, chunk_addr, 2);
+    else if (ptr_type == PTR_TYPE_VERYDENSE) 
+      curr_ptr = get_ptr_vdense(s_table, chunk, chunk_addr, 2);
+  }
+
+  ptr_type = curr_ptr >> 14; 
+
+  // Search L3
+  if (ptr_type == PTR_TYPE_NH) 
+    return s_table->next_hop_table[curr_ptr];
+  else { //ptr to lower chunk
+    chunk = &(s_table->l3[curr_ptr & 0x3fff]);
+    chunk_addr = dest_ip & 0x000000ff;
+    if (ptr_type == PTR_TYPE_SPARSE) 
+      curr_ptr = get_ptr_sparse(chunk, chunk_addr);
+    else if (ptr_type == PTR_TYPE_DENSE) 
+      curr_ptr = get_ptr_dense(s_table, chunk, chunk_addr, 3);
+    else if (ptr_type == PTR_TYPE_VERYDENSE) 
+      curr_ptr = get_ptr_vdense(s_table, chunk, chunk_addr, 3);
+  }
+
+  return s_table->next_hop_table[curr_ptr];
+}
+
+uint16_t get_ptr_l1(small_table_t *s_table, uint16_t addr) {
+  uint16_t bix, ix, bit, pix;
+  uint16_t codeword;
+  uint16_t base;
+  uint16_t ten, six;
+  uint16_t ptr;
+  uint16_t maptable_off;
+
+  bix = (addr & 0xffc0) >> 6;
+  ix  = (addr & 0xfff0) >> 4;
+  bit = addr & 0x000f; 
+
+  codeword  = s_table->l1.codewords[ix];
+  base      = s_table->l1.base[bix];
+  six = codeword >> 10;
+  ten = codeword & 0x03ff;
+
+  if (ten > 675) { // encoded directly into codeword
+    ptr = six | ((ten-676) << 6);
+  } 
+  else {
+    maptable_off = s_table->maptable[ten][bit >> 1];
+    maptable_off = (bit & 0x0001) ? maptable_off & 0x000f : (maptable_off & 0x00f0) >> 4;
+    pix = six + base + maptable_off;
+    ptr = s_table->l1_ptr_table[pix];
+  }
+
+  return ptr; 
+}
+
+uint16_t get_ptr_sparse(chunk_t *chunk, uint8_t addr) {
+  int i;
+
+  if (addr >= chunk->sparse.heads[3]) { // search higher addresses
+    for (i = 0; i < 4; i++) {
+      if (addr <= chunk->sparse.heads[i])
+        return chunk->sparse.pointers[i];
+    }
+  } else { // search lower addresses
+    for (i = 4; i < 8; i++) {
+      if (addr <= chunk->sparse.heads[i])
+        return chunk->sparse.pointers[i];
+    }
+  }
+  return chunk->sparse.pointers[7];
+}
+
+uint16_t get_ptr_dense(small_table_t *s_table, chunk_t *chunk, uint8_t addr, int level) {
+  uint16_t ix, bit, pix;
+  uint16_t codeword;
+  uint16_t base;
+  uint16_t ten, six;
+  uint16_t ptr;
+  uint16_t maptable_off;
+  uint16_t *ptr_table;
+
+  ix  = (addr & 0xf0) >> 4;
+  bit = addr & 0x0f;
+
+  if (level == 2)
+    ptr_table = s_table->l2_ptr_table;
+  else
+    ptr_table = s_table->l3_ptr_table;
+
+  codeword  = chunk->dense.cut.codewords[ix];
+  base      = chunk->dense.cut.base[0];
+
+  six = codeword >> 10;
+  ten = codeword & 0x03ff;
+
+  if (ten > 675) { // encoded directly into codeword
+    ptr = six | ((ten-676) << 6);
+  } 
+  else {
+    maptable_off = s_table->maptable[ten][bit >> 1];
+    maptable_off = (bit & 0x0001) ? maptable_off & 0x000f : (maptable_off & 0x00f0) >> 4;
+    pix = six + base + maptable_off;
+    ptr = ptr_table[pix];
+  }
+
+  return ptr; 
+}
+
+uint16_t get_ptr_vdense(small_table_t *s_table, chunk_t *chunk, uint8_t addr, int level) {
+  uint16_t ix, bit, pix, bix;
+  uint16_t codeword;
+  uint16_t base;
+  uint16_t ten, six;
+  uint16_t ptr;
+  uint16_t maptable_off;
+  uint16_t *ptr_table;
+
+  ix  = (addr & 0xf0) >> 4;
+  bix = (addr & 0xc0) >> 6;
+  bit = addr & 0x0f;
+
+  if (level == 2)
+    ptr_table = s_table->l2_ptr_table;
+  else
+    ptr_table = s_table->l3_ptr_table;
+
+  codeword  = chunk->dense.cut.codewords[ix];
+  base      = chunk->dense.cut.base[bix];
+
+  six = codeword >> 10;
+  ten = codeword & 0x03ff;
+
+  if (ten > 675) { // encoded directly into codeword
+    ptr = six | ((ten-676) << 6);
+  } 
+  else {
+    maptable_off = s_table->maptable[ten][bit >> 1];
+    maptable_off = (bit & 0x0001) ? maptable_off & 0x000f : (maptable_off & 0x00f0) >> 4;
+    pix = six + base + maptable_off;
+    ptr = ptr_table[pix];
+  }
+
+  return ptr; 
+
 }
