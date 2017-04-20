@@ -147,8 +147,9 @@ void test_routing_table(route_table_entry_t *trace, int num_tests, void *table, 
   for(i = 0; i < num_tests; i++) {
     next_hop = lookup(trace[i].dest_addr.address, table);
     if(trace[i].next_hop_addr != next_hop) {
-      printf("Incorrect lookup for index: %d.  Expected next hop: %d  Got next hop: %d\n", i, trace[i].next_hop_addr, next_hop);
+      printf("Incorrect lookup for index: %d. Addr: %x Expected next hop: %d  Got next hop: %d\n", i, trace[i].dest_addr.address, trace[i].next_hop_addr, next_hop);
       num_incorrect++;
+      break;
     }
   }
 
@@ -230,25 +231,25 @@ void mergesort_rec(route_table_entry_t *table, route_table_entry_t *sorted, int 
     if(metric == MASK_LEN) { 
       while ((l_1 != u_1) || (l_2 != u_2)) {
         if (l_2 == u_2) { // done with arr2
-          sorted[idx++].dest_addr.mask = table[l_1++].dest_addr.mask;
+          sorted[idx++] = table[l_1++];
         } else if (l_1 == u_1) { // done with arr 1
-          sorted[idx++].dest_addr.mask = table[l_2++].dest_addr.mask;
+          sorted[idx++] = table[l_2++];
         } else if (table[l_1].dest_addr.mask >= table[l_2].dest_addr.mask) { // pick from arr 1
-          sorted[idx++].dest_addr.mask = table[l_1++].dest_addr.mask;
+          sorted[idx++] = table[l_1++];
         } else { // pick from arr 2
-          sorted[idx++].dest_addr.mask = table[l_2++].dest_addr.mask;
+          sorted[idx++] = table[l_2++];
         }
       }
     } else if (metric == IP_ADDR) {
       while ((l_1 != u_1) || (l_2 != u_2)) {
         if (l_2 == u_2) { // done with arr2
-          sorted[idx++].dest_addr.address = table[l_1++].dest_addr.address;
+          sorted[idx++] = table[l_1++];
         } else if (l_1 == u_1) { // done with arr 1
-          sorted[idx++].dest_addr.address = table[l_2++].dest_addr.address;
+          sorted[idx++] = table[l_2++];
         } else if (table[l_1].dest_addr.address >= table[l_2].dest_addr.address) { // pick from arr 1
-          sorted[idx++].dest_addr.address = table[l_1++].dest_addr.address;
+          sorted[idx++] = table[l_1++];
         } else { // pick from arr 2
-          sorted[idx++].dest_addr.address = table[l_2++].dest_addr.address;
+          sorted[idx++] = table[l_2++];
         }
       }
     } else {

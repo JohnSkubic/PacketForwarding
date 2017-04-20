@@ -129,6 +129,7 @@ small_table_t *build_small_table(route_table_entry_t *table, int table_size) {
   */
 
   for(i = 0; i < table_size; i++) {
+    printf("Addr: %x Nhop: %d Mask: %d\n", table[i].dest_addr.address, table[i].next_hop_addr, table[i].dest_addr.mask);
     s_table->next_hop_table[i] = table[i].next_hop_addr;
   }
   s_table->num_entries = table_size;
@@ -161,9 +162,11 @@ small_table_t *build_small_table(route_table_entry_t *table, int table_size) {
     mask = table[i].dest_addr.mask;
     addr = table[i].dest_addr.address;
     curr = tree;
+    //printf("Adding Addr: %x Mask: %d\n", addr, mask);
     for (k = 0; k < mask; k++) { // move down tree
       bit = (addr & (0x80000000 >> k)) ? 1 : 0;
-      if (bit) { // look right
+      if (bit) { // look right  
+        //printf("MOVE RIGHT\n");
         if(curr->r == NULL) {
           temp = new_node();
           temp->type = HEAD_ROOT;
@@ -171,6 +174,7 @@ small_table_t *build_small_table(route_table_entry_t *table, int table_size) {
         }     
         curr = curr->r;
       } else { // look left
+        //printf("MOVE LEFT\n");
         if(curr->l == NULL) {
           temp = new_node();
           temp->type = HEAD_ROOT;
@@ -315,9 +319,9 @@ void find_level_sizes(node_t *tree, int clevel, int minlevel, int maxlevel, int 
 int build_chunk_trees_rec(small_table_t *s_table, node_t *head, uint16_t *maptable, int cut, int max_depth, int chunk_num, int clevel, uint8_t *i_types, uint8_t *o_types, int *gcount, uint16_t *last_ptr) {
   if (clevel < cut) {
     if (head->l != NULL)
-      chunk_num += build_chunk_trees_rec(s_table, head->l, maptable, cut, max_depth, chunk_num, clevel+1, i_types, o_types, gcount, last_ptr);
+      chunk_num = build_chunk_trees_rec(s_table, head->l, maptable, cut, max_depth, chunk_num, clevel+1, i_types, o_types, gcount, last_ptr);
     if (head->r != NULL)
-      chunk_num += build_chunk_trees_rec(s_table, head->r, maptable, cut, max_depth, chunk_num, clevel+1, i_types, o_types, gcount, last_ptr);
+      chunk_num = build_chunk_trees_rec(s_table, head->r, maptable, cut, max_depth, chunk_num, clevel+1, i_types, o_types, gcount, last_ptr);
   }
   else if ((clevel == cut) && (head->type == HEAD_ROOT)){
     build_chunk_trees(s_table, head, maptable, cut, max_depth, chunk_num, i_types, o_types, gcount, last_ptr);
@@ -327,7 +331,7 @@ int build_chunk_trees_rec(small_table_t *s_table, node_t *head, uint16_t *maptab
 }
 
 void build_chunk_trees(small_table_t *s_table, node_t *head, uint16_t *maptable, int cut, int max_depth, int chunk_num, uint8_t *i_types, uint8_t *o_types, int *gcount, uint16_t *last_ptr) {
-  printf("Building chunk number: %d\n", chunk_num); 
+  //printf("Building chunk number: %d\n", chunk_num); 
   int num_ptrs = 0;
   int num_chunks = 0;
 
@@ -341,18 +345,18 @@ void build_chunk_trees(small_table_t *s_table, node_t *head, uint16_t *maptable,
   
   find_level_sizes(head, cut, cut, max_depth, &num_chunks, &num_ptrs);
 
-  printf("cut: %d max %d CHUNKS %d PTRS %d\n", cut, max_depth, num_chunks, num_ptrs);
+  //printf("cut: %d max %d CHUNKS %d PTRS %d\n", cut, max_depth, num_chunks, num_ptrs);
 
   if (num_ptrs <= 8) { //SPARSE
-    printf("Building sparse chunk\n");
+    //printf("Building sparse chunk\n");
     chunk_arr[chunk_num] = build_sparse_chunk(s_table, head, cut, max_depth, i_types, gcount, last_ptr);
     o_types[chunk_num] = PTR_TYPE_SPARSE; 
   } else if (num_ptrs <= 64) { //DENSE
-    printf("Building dense chunk\n");
+    //printf("Building dense chunk\n");
     chunk_arr[chunk_num] = build_dense_chunk(s_table, head, maptable, cut, max_depth, i_types, gcount, last_ptr);
     o_types[chunk_num] = PTR_TYPE_DENSE; 
   } else { // VERYDENSE
-    printf("Building very dense chunk\n");
+    //printf("Building very dense chunk\n");
     chunk_arr[chunk_num] = build_vdense_chunk(s_table, head, maptable, cut, max_depth, i_types, gcount, last_ptr);
     o_types[chunk_num] = PTR_TYPE_VERYDENSE; 
   } 
@@ -620,6 +624,11 @@ void rec_set_codewords(small_table_t *s_table, uint16_t *codewords, node_t *node
   }
 
   if ((count == 0) || (node->type == HEAD_GENUINE)) { // found a head
+
+    if(cut == 0) {
+      printf("COUNT: %d IDX: %d BIT: %d Type: %d Addr: %x\n", count, addr>>4, addr & 0x000f, node->type, node->addr);
+    }
+
     idx = addr >> 4;
     bit_num = addr & 0x000f;
     
