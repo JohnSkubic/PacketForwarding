@@ -308,7 +308,7 @@ small_table_t *build_small_table(route_table_entry_t *table, int table_size) {
   set_codewords_ptrs(s_table, &(s_table->l1), codewords, ptrs, maptable, 4, 0, types_l2, &count, &last_ptr); 
 
   // free used memory
-  //free(codewords);
+  free(codewords);
   free(maptable);
   for (i = 0; i < L1_N_CODEWORDS; i++) {
     destroy_node(ptrs[i].next); 
@@ -627,8 +627,8 @@ void set_codewords_ptrs(small_table_t *s_table, cut_t *cut_i, uint16_t *codeword
       } // END - pointer stored in pointer table
 
     } // END - Iterate over codewords in base
-   
-    cut_i->base[i] = base_count;
+  
+    cut_i->base[i/codes_per_base] = base_count;
     base_count += ptr_count;
     ptr_count = 0;
  
