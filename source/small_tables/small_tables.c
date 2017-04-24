@@ -300,10 +300,10 @@ small_table_t *build_small_table(route_table_entry_t *table, int table_size) {
 
   rec_set_codewords(s_table, codewords, tree, maptable, 16, 0, ptrs);
 
-  for(i=0; i < L1_N_CODEWORDS;i++) {
-    if(codewords[i] != 0x8000 && codewords[i] != 0)
-      printf("CODE: %d WORD: %x\n", i, codewords[i]);
-  }
+  //for(i=0; i < L1_N_CODEWORDS;i++) {
+  //  if(codewords[i] != 0x8000 && codewords[i] != 0)
+  //    printf("CODE: %d WORD: %x\n", i, codewords[i]);
+  //}
 
   set_codewords_ptrs(s_table, &(s_table->l1), codewords, ptrs, maptable, 4, 0, types_l2, &count, &last_ptr); 
 
@@ -604,7 +604,7 @@ void set_codewords_ptrs(small_table_t *s_table, cut_t *cut_i, uint16_t *codeword
         while(temp != NULL) {
           if(temp->type == PTR_TYPE_CHUNK) {
             ptr_temp = *gcount;
-            printf("PTRCHUNK: TYPE: %d PTRTMP: %x IDX: %d\n", i_types[*gcount], ptr_temp, *ptrs);
+            //printf("PTRCHUNK: TYPE: %d PTRTMP: %x IDX: %d\n", i_types[*gcount], ptr_temp, *ptrs);
             if(i_types[*gcount] == PTR_TYPE_SPARSE)
               ptr_temp |= (PTR_TYPE_SPARSE << 14);
             else if (i_types[*gcount] == PTR_TYPE_DENSE)
@@ -615,7 +615,7 @@ void set_codewords_ptrs(small_table_t *s_table, cut_t *cut_i, uint16_t *codeword
           }
           else {
             ptr_temp = get_nhop_idx(s_table->next_hop_table, temp->nhop, s_table->num_entries);
-            printf("PTR PTRTMP: %x IDX: %d\n",  ptr_temp, *ptrs);
+            //printf("PTR PTRTMP: %x IDX: %d\n",  ptr_temp, *ptrs);
           }
 
           ptr_table[*ptrs] = ptr_temp;
@@ -652,9 +652,9 @@ void rec_set_codewords(small_table_t *s_table, uint16_t *codewords, node_t *node
 
   if ((count == 0) || (node->type == HEAD_GENUINE)) { // found a head
 
-    if(cut == 0) {
-      printf("COUNT: %d IDX: %d BIT: %d Type: %d Addr: %x\n", count, addr>>4, addr & 0x000f, node->type, node->addr);
-    }
+    //if(cut == 0) {
+    //  printf("COUNT: %d IDX: %d BIT: %d Type: %d Addr: %x\n", count, addr>>4, addr & 0x000f, node->type, node->addr);
+    //}
 
     idx = addr >> 4;
     bit_num = addr & 0x000f;
@@ -786,9 +786,7 @@ void destroy_node(lnode_t *node) {
 void complete_tree(node_t *node, node_t *ancestor, int depth, uint32_t addr) {
   if (node->type == HEAD_GENUINE) {
     ancestor = node;
-
-    if(((node->r != NULL) && (node->r->type == HEAD_GENUINE)) &&
-    ((node->l != NULL) && (node->l->type == HEAD_GENUINE))) {
+    if((node->r != NULL) && (node->l != NULL)) {
       node->type = HEAD_ROOT;
     }
   }
