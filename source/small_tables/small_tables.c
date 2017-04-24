@@ -209,7 +209,7 @@ small_table_t *build_small_table(route_table_entry_t *table, int table_size) {
   // Complete Tree (all nodes have 0 or 2 leaves)
   complete_tree(tree, tree, 0, 0x00000000);
 
-  print_tree(tree, 0);
+  //print_tree(tree, 0);
 
   /*
   *
@@ -687,15 +687,19 @@ void build_s_table_map_table(small_table_t *s_table,uint16_t *maptable) {
   for(i = 0; i < 676; i++) {
     count = 0;
     bvect = maptable[i];
-    mask = 0x8000;
+    mask = 0x4000;
+    first = 0;
+    second = 0;
     for(j = 0; j < 8; j++) {
-      first = count;
+      if(j!=0) {
+        if(bvect & mask) 
+          count++;
+        first = count;
+        mask = mask >> 1;
+      }
       if(bvect & mask) 
         count++;
-      mask = mask >> 1;
       second = count;
-      if(bvect & mask) 
-        count++;
       mask = mask >> 1;
       s_table->maptable[i][j] = (first << 4) | (second & LBYTE);
     }    
