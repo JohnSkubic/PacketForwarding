@@ -74,7 +74,7 @@ int main (int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  printf("INFO:\nL1_PTRS: %d\nL2_PTRS: %d\nL3_PTRS:%d\n", s_table->n_l1_ptrs, s_table->n_l2_ptrs, s_table->n_l3_ptrs);
+  //printf("INFO:\nL1_PTRS: %d\nL2_PTRS: %d\nL3_PTRS:%d\n", s_table->n_l1_ptrs, s_table->n_l2_ptrs, s_table->n_l3_ptrs);
 
   // Run test (second argument is function pointer)
   printf("Testing small tables\n");
@@ -143,7 +143,7 @@ small_table_t *build_small_table(route_table_entry_t *table, int table_size) {
   */
 
   for(i = 0; i < table_size; i++) {
-    printf("Addr: %x Nhop: %d Mask: %d\n", table[i].dest_addr.address, table[i].next_hop_addr, table[i].dest_addr.mask);
+    //printf("Addr: %x Nhop: %d Mask: %d\n", table[i].dest_addr.address, table[i].next_hop_addr, table[i].dest_addr.mask);
     s_table->next_hop_table[i] = table[i].next_hop_addr;
   }
   s_table->num_entries = table_size;
@@ -363,25 +363,24 @@ void build_chunk_trees(small_table_t *s_table, node_t *head, uint16_t *maptable,
   chunk_t *chunk_arr = NULL;
 
   //choose the correct level
-  if (cut == 16)
+  if (cut == 16) {
     chunk_arr = s_table->l2;
-  else if (cut == 24)
+  }
+  else if (cut == 24) {
     chunk_arr = s_table->l3;
+  }
   
   find_level_sizes(head, cut, cut, max_depth, &num_chunks, &num_ptrs);
 
   //printf("cut: %d max %d CHUNKS %d PTRS %d\n", cut, max_depth, num_chunks, num_ptrs);
 
   if (num_ptrs <= 8) { //SPARSE
-    //printf("Building sparse chunk\n");
     chunk_arr[chunk_num] = build_sparse_chunk(s_table, head, cut, max_depth, i_types, gcount, last_ptr);
     o_types[chunk_num] = PTR_TYPE_SPARSE; 
   } else if (num_ptrs <= 64) { //DENSE
-    //printf("Building dense chunk\n");
     chunk_arr[chunk_num] = build_dense_chunk(s_table, head, maptable, cut, max_depth, i_types, gcount, last_ptr);
     o_types[chunk_num] = PTR_TYPE_DENSE; 
   } else { // VERYDENSE
-    //printf("Building very dense chunk\n");
     chunk_arr[chunk_num] = build_vdense_chunk(s_table, head, maptable, cut, max_depth, i_types, gcount, last_ptr);
     o_types[chunk_num] = PTR_TYPE_VERYDENSE; 
   } 
@@ -561,11 +560,7 @@ void set_codewords_ptrs(small_table_t *s_table, cut_t *cut_i, uint16_t *codeword
     n_codewords = L1_N_CODEWORDS;
   }
 
-  if (*ptrs == 0) 
-    base_count = 0;
-  else
-    base_count = *ptrs - 1;
-  
+  base_count = *ptrs; 
   ptr_count = 0;
   
   for (i = 0; i < n_codewords; i+=codes_per_base) { // iterate over each set of codewords (one base)
