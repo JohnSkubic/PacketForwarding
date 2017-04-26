@@ -87,19 +87,26 @@ int main (int argc, char *argv[]) {
 // ********** BEGIN SCALABLE FUNCTIONS **********
 
 htable_t ** build_scalable_table(route_table_entry_t * table, int num_entries){
-	htable_t ** scalable_table;
-	scalable_table = init_scalable_table((uint32_t)32);//init array of hash table pointers, IPv4 w/ notions to expandability to IPv6
+	htable_t ** scalable_htables;
+	scalable_htables = init_scalable_htables((uint32_t)32);//init array of hash table pointers, IPv4 w/ notions to expandability to IPv6
 
-
+	//LOTS OF OTHER STUFF
 
 	return scalable_table;
 }
 
-htable_t ** init_scalable_table(uint32_t num_levels){
-	htable_t ** scalable_table;
-	scalable_table = malloc(num_levels*sizeof(htable_t *));
+htable_t ** init_scalable_htables(uint32_t num_levels){
+	htable_t ** scalable_htables;
+	scalable_htables = malloc(num_levels*sizeof(htable_t *));
 
-	return scalable_table;
+	return scalable_htables;
+}
+
+void destroy_rope(rope_t * rope){
+	if(rope == NULL){return};//done
+	destroy_rope(rope->nxt_rope_node);//walk llist
+	free(rope);//free this rope node
+	return;
 }
 
 // ********** END SCALABLE FUNCTIONS **********
@@ -137,16 +144,6 @@ htable_t * htable_create(uint32_t prefix_level){
 		htable->buckets[i] = NULL;
 	}
 
-	/* not in this function anymore, because buckets is now an array of pointers only, populated if index is used
-	//initialize contents of buckets
-	for(i=0;i<(num_buckets-1);i++){
-		table->buckets[i].nxt_bucket = NULL;
-		table->buckets[i].bucket_type = empty;
-		table->buckets[i].prefix = 0;
-		table->buckets[i].bmp    = 0;
-	}
-	*/
-
 	return table;
 }
 
@@ -158,7 +155,6 @@ bucket_t * htable_search(htable_t * htable, uint32_t prefix){//search for prefix
 	return htable_search_llist(htable->buckets[htable_hash(htable, prefix)],prefix);
                                              //^every search need not remember to call hash()
 }
-
 bucket_t * htable_search_llist(bucket_t * bucket, uint32_t prefix){
 	// expects prefix to be masked off corresponding to hash table's level (or precomputed level mask)
 	if(bucket == NULL) return bucket; //return of null means not found/present
@@ -166,32 +162,69 @@ bucket_t * htable_search_llist(bucket_t * bucket, uint32_t prefix){
 	return htable_search_llist(bucket->nxt_bucket, prefix);//continue to search in collision resolved linked list
 }
 
-void htable_insert(htable_t * htable, uint32_t prefix, bucket_type_t btype){//remember to have already and-ed with mask provided in hash table struct
+void htable_insert(htable_t * htable, bucket_type_t btype, uint32_t prefix, uint32_t bmp, uint32_t nxt_hop_addr, rope_t * rope){//remember to have already and-ed with mask provided in hash table struct
+	//overwrites duplicates -- existing matching prefix entries
 	uint32_t index;
 	index = htable_hash(htable, prefix);
-	//increment total entries in this hash table
+
+	//malloc and assemble new bucket_t
+	bucket_t * n_bucket;
+	n_bucket = malloc(sizeof(bucket_t));
+	n_bucket->btype = btype;
+
+	//increment entries in this hash table
+	//to handle duplicates (marker, prefix to both) htable_insert_llist will decrement
 	htable->num_entries++;
 
-	//IDEA PASS IN ASSEMBLED BUCKET(which searches if btype is "both") 
-	//or pass all fields of bucket pre-calculated (bucket_type,prefix,bmp,nxt_hop_addr, new_rope)
-	//this function will check for preexisting matching prefixes and update if exist
+	//bucket does not exist at this index yet
+	//htable_insert_llist will increment, because it will appear as null, counteract this
+	if(htable->buckets[index] == NULL){	htable->num_collisions--; }
 
-	in bucket_t bmp and nxt_hop_addr can probably be combined and you know its a bmp for "both or marker" nxt_hop_addr for "both or prefix"
+	//insert into hash table
+	//resolve collisions, should they exist
+	htable->buckets[index] = htable_insert_llist(htable->buckets[index], n_bucket, htable);
+}
+bucket_t * htable_insert_llist(bucket_t * bucket_ll, bucket * n_bucket, htable_t * htable){
+	//insert at end of list, order doesn't matter as lookups are random :(
 
-	if(htable->buckets[index] == NULL){//bucket does not exist at this index yet
-		htable->buckets[index] = malloc(sizeof(bucket_t));
-
-	} else {//conflicts, must correctly increment num_collisions
+	//new insertion
+	if(bucket == NULL){//inserting means collision
+		//except for 1st insert, which is accounted for by caller
+		htable_t->num_collisions++;
 		
+		return n_bucket;		
 	}
+	else if (bucket_ll->prefix == n_bucket->prefix){//prefix matches --> duplicate (usually a modify)
+		//modify --> (marker,prefix to both)
+		n_bucket->nxt_bucket = bucket_ll->nxt_bucket;
+		free(bucket_ll);//simply replace, and free
+		htable->num_entries--;//avoid double counting entries
+		
+		return n_bucket;
+	}
+	else //walk llist
+		bucket_ll->nxt_bucket = htable_insert_llist(bucket_ll->nxt_bucket, n_bucket, htable);
 }
 
-bucket_t * htable_insert_llist(bucket_t * bucket, uint32_t prefix){
-	//insert at end of list, order doesn't matter as lookups will be random :(
-	if(bucket == NULL){
-		bucket = malloc(sizeof(bucket_t));
-		bucket->
+void htable_delete(htable_t * htable){
+	uint32_t i;
+	//free any existing buckets and possibly,
+	//associated llists due to collision resolution
+	for(i=0; i < (htable->num_entries); i++){
+		htable_delete_llist(htable->buckets[i]);
 	}
+	//free array of bucket pointers
+	free(htable->buckets);
+	//free htable
+	free(htable);
+	return;
+}
+void htable_delete_llist(bucket_t * bucket_ll){
+	if(bucket_ll == NULL) { return; }// at end of list
+	destroy_rope(bucket_ll->new_rope);//free rope if exists
+	htable_delete_llist(bucket_ll->nxt_bucket);//walk llist
+	free(bucket_ll);//free this node
+	return;
 }
 
 // ********** END HASHTABLE FUNCTIONS **********
@@ -210,7 +243,7 @@ trie_node_t * build_trie_table(route_table_entry_t * table, int num_entries){
 	return trie;
 }
 
-//p (char*)inet_ntoa(htonl(table[$table_ptr++].dest_addr.address)) -- useful gdb to visualize IP addresses
+//p (char*)inet_ntoa(htonl(table[$table_ptr++].dest_addr.address)) -- useful gdb command to visualize IP addresses
 trie_node_t * insert_trie_node(trie_node_t * trie, route_table_entry_t * table_entry, uint32_t curr_level) {
 
 	if(trie == NULL){//current node does not exist
