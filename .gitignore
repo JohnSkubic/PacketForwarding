@@ -42,3 +42,5 @@ trace_generator
 outputs/*
 !outputs/example
 !outputs/example_trace
+!outputs/scalable_example
+!outputs/scalable_example_trace
