@@ -24,6 +24,8 @@
 #define MASK_LEN 0
 #define IP_ADDR 1
 
+#define N_REPEATS 1000
+
 //ex: 192.256.0.0/16
 //address <- 192.256.0.0
 //mask    <- 16
