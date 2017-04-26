@@ -12,6 +12,18 @@
 #include "utility.h"
 #include "small_tables.h"
 
+void print_tree(node_t *node, int depth) {
+  if (node->r != NULL) {
+    print_tree(node->r, depth+1);
+  }
+  if (node->l != NULL) {
+    print_tree(node->l, depth+1);
+  }
+
+  printf("DEPTH: %d Addr: %x Type: %d Nhop: %d\n", depth, node->addr, node->type, node->nhop);
+}
+
+
 int main (int argc, char *argv[]) {
   route_table_entry_t *table;
   route_table_entry_t *trace;
@@ -61,6 +73,8 @@ int main (int argc, char *argv[]) {
     printf("Error: Could not build small table\n");
     return EXIT_FAILURE;
   }
+
+  //printf("INFO:\nL1_PTRS: %d\nL2_PTRS: %d\nL3_PTRS:%d\n", s_table->n_l1_ptrs, s_table->n_l2_ptrs, s_table->n_l3_ptrs);
 
   // Run test (second argument is function pointer)
   printf("Testing small tables\n");
@@ -129,7 +143,7 @@ small_table_t *build_small_table(route_table_entry_t *table, int table_size) {
   */
 
   for(i = 0; i < table_size; i++) {
-    printf("Addr: %x Nhop: %d Mask: %d\n", table[i].dest_addr.address, table[i].next_hop_addr, table[i].dest_addr.mask);
+    //printf("Addr: %x Nhop: %d Mask: %d\n", table[i].dest_addr.address, table[i].next_hop_addr, table[i].dest_addr.mask);
     s_table->next_hop_table[i] = table[i].next_hop_addr;
   }
   s_table->num_entries = table_size;
@@ -156,28 +170,30 @@ small_table_t *build_small_table(route_table_entry_t *table, int table_size) {
 
   tree = new_node();
   tree->type = HEAD_TREE_ROOT;
-
+  
+  uint32_t tree_addr;
   // Add rules as nodes
   for(i = 0; i < table_size; i++) {
     mask = table[i].dest_addr.mask;
     addr = table[i].dest_addr.address;
     curr = tree;
-    //printf("Adding Addr: %x Mask: %d\n", addr, mask);
+    tree_addr = 0;
     for (k = 0; k < mask; k++) { // move down tree
       bit = (addr & (0x80000000 >> k)) ? 1 : 0;
       if (bit) { // look right  
-        //printf("MOVE RIGHT\n");
+        tree_addr |= (0x80000000 >> k);
         if(curr->r == NULL) {
           temp = new_node();
           temp->type = HEAD_ROOT;
+          temp->addr = tree_addr;
           curr->r = temp;
         }     
         curr = curr->r;
       } else { // look left
-        //printf("MOVE LEFT\n");
         if(curr->l == NULL) {
           temp = new_node();
           temp->type = HEAD_ROOT;
+          temp->addr = tree_addr;
           curr->l = temp;
         }
         curr = curr->l;
@@ -188,9 +204,12 @@ small_table_t *build_small_table(route_table_entry_t *table, int table_size) {
     curr->addr = addr;
     curr->nhop = table[i].next_hop_addr;
   }
+  
 
   // Complete Tree (all nodes have 0 or 2 leaves)
   complete_tree(tree, tree, 0, 0x00000000);
+
+  //print_tree(tree, 0);
 
   /*
   *
@@ -280,10 +299,16 @@ small_table_t *build_small_table(route_table_entry_t *table, int table_size) {
   memset(ptrs, 0, sizeof(lnode_t) * L1_N_CODEWORDS);
 
   rec_set_codewords(s_table, codewords, tree, maptable, 16, 0, ptrs);
+
+  //for(i=0; i < L1_N_CODEWORDS;i++) {
+  //  if(codewords[i] != 0x8000 && codewords[i] != 0)
+  //    printf("CODE: %d WORD: %x\n", i, codewords[i]);
+  //}
+
   set_codewords_ptrs(s_table, &(s_table->l1), codewords, ptrs, maptable, 4, 0, types_l2, &count, &last_ptr); 
 
   // free used memory
-  //free(codewords);
+  free(codewords);
   free(maptable);
   for (i = 0; i < L1_N_CODEWORDS; i++) {
     destroy_node(ptrs[i].next); 
@@ -338,25 +363,24 @@ void build_chunk_trees(small_table_t *s_table, node_t *head, uint16_t *maptable,
   chunk_t *chunk_arr = NULL;
 
   //choose the correct level
-  if (cut == 16)
+  if (cut == 16) {
     chunk_arr = s_table->l2;
-  else if (cut == 24)
+  }
+  else if (cut == 24) {
     chunk_arr = s_table->l3;
+  }
   
   find_level_sizes(head, cut, cut, max_depth, &num_chunks, &num_ptrs);
 
   //printf("cut: %d max %d CHUNKS %d PTRS %d\n", cut, max_depth, num_chunks, num_ptrs);
 
   if (num_ptrs <= 8) { //SPARSE
-    //printf("Building sparse chunk\n");
     chunk_arr[chunk_num] = build_sparse_chunk(s_table, head, cut, max_depth, i_types, gcount, last_ptr);
     o_types[chunk_num] = PTR_TYPE_SPARSE; 
   } else if (num_ptrs <= 64) { //DENSE
-    //printf("Building dense chunk\n");
     chunk_arr[chunk_num] = build_dense_chunk(s_table, head, maptable, cut, max_depth, i_types, gcount, last_ptr);
     o_types[chunk_num] = PTR_TYPE_DENSE; 
   } else { // VERYDENSE
-    //printf("Building very dense chunk\n");
     chunk_arr[chunk_num] = build_vdense_chunk(s_table, head, maptable, cut, max_depth, i_types, gcount, last_ptr);
     o_types[chunk_num] = PTR_TYPE_VERYDENSE; 
   } 
@@ -536,11 +560,7 @@ void set_codewords_ptrs(small_table_t *s_table, cut_t *cut_i, uint16_t *codeword
     n_codewords = L1_N_CODEWORDS;
   }
 
-  if (*ptrs == 0) 
-    base_count = 0;
-  else
-    base_count = *ptrs - 1;
-  
+  base_count = *ptrs; 
   ptr_count = 0;
   
   for (i = 0; i < n_codewords; i+=codes_per_base) { // iterate over each set of codewords (one base)
@@ -579,6 +599,7 @@ void set_codewords_ptrs(small_table_t *s_table, cut_t *cut_i, uint16_t *codeword
         while(temp != NULL) {
           if(temp->type == PTR_TYPE_CHUNK) {
             ptr_temp = *gcount;
+            //printf("PTRCHUNK: TYPE: %d PTRTMP: %x IDX: %d\n", i_types[*gcount], ptr_temp, *ptrs);
             if(i_types[*gcount] == PTR_TYPE_SPARSE)
               ptr_temp |= (PTR_TYPE_SPARSE << 14);
             else if (i_types[*gcount] == PTR_TYPE_DENSE)
@@ -589,6 +610,7 @@ void set_codewords_ptrs(small_table_t *s_table, cut_t *cut_i, uint16_t *codeword
           }
           else {
             ptr_temp = get_nhop_idx(s_table->next_hop_table, temp->nhop, s_table->num_entries);
+            //printf("PTR PTRTMP: %x IDX: %d\n",  ptr_temp, *ptrs);
           }
 
           ptr_table[*ptrs] = ptr_temp;
@@ -600,8 +622,8 @@ void set_codewords_ptrs(small_table_t *s_table, cut_t *cut_i, uint16_t *codeword
       } // END - pointer stored in pointer table
 
     } // END - Iterate over codewords in base
-   
-    cut_i->base[i] = base_count;
+  
+    cut_i->base[i/codes_per_base] = base_count;
     base_count += ptr_count;
     ptr_count = 0;
  
@@ -625,9 +647,9 @@ void rec_set_codewords(small_table_t *s_table, uint16_t *codewords, node_t *node
 
   if ((count == 0) || (node->type == HEAD_GENUINE)) { // found a head
 
-    if(cut == 0) {
-      printf("COUNT: %d IDX: %d BIT: %d Type: %d Addr: %x\n", count, addr>>4, addr & 0x000f, node->type, node->addr);
-    }
+    //if(cut == 0) {
+    //  printf("COUNT: %d IDX: %d BIT: %d Type: %d Addr: %x\n", count, addr>>4, addr & 0x000f, node->type, node->addr);
+    //}
 
     idx = addr >> 4;
     bit_num = addr & 0x000f;
@@ -660,12 +682,16 @@ void build_s_table_map_table(small_table_t *s_table,uint16_t *maptable) {
   for(i = 0; i < 676; i++) {
     count = 0;
     bvect = maptable[i];
-    mask = 0x8000;
+    mask = 0x4000;
+    first = 0;
+    second = 0;
     for(j = 0; j < 8; j++) {
-      if(bvect & mask) 
-        count++;
-      first = count;
-      mask = mask >> 1;
+      if(j!=0) {
+        if(bvect & mask) 
+          count++;
+        first = count;
+        mask = mask >> 1;
+      }
       if(bvect & mask) 
         count++;
       second = count;
@@ -755,9 +781,7 @@ void destroy_node(lnode_t *node) {
 void complete_tree(node_t *node, node_t *ancestor, int depth, uint32_t addr) {
   if (node->type == HEAD_GENUINE) {
     ancestor = node;
-
-    if(((node->r != NULL) && (node->r->type == HEAD_GENUINE)) &&
-    ((node->l != NULL) && (node->l->type == HEAD_GENUINE))) {
+    if((node->r != NULL) && (node->l != NULL)) {
       node->type = HEAD_ROOT;
     }
   }
@@ -770,12 +794,14 @@ void complete_tree(node_t *node, node_t *ancestor, int depth, uint32_t addr) {
       node->l->type = HEAD_GENUINE;
       node->l->addr = addr;
       node->l->nhop = ancestor->nhop;
+      //printf("Level %d: Completing LEFT addr: %x with new %x\n", depth, addr,addr | (0x80000000 >> depth) );
       complete_tree(node->r, ancestor, depth+1, addr | (0x80000000 >> depth));
     } else { // node->r
       node->r = new_node();
       node->r->type = HEAD_GENUINE;
-      node->r->addr = addr;
+      node->r->addr = addr | (0x80000000 >> depth);
       node->r->nhop = ancestor->nhop;
+      //printf("Level %d: Completing RIGHT addr: %x with new %x\n", depth, addr,addr | (0x80000000 >> depth) );
       complete_tree(node->l, ancestor, depth+1, addr);
     } 
   } else {
@@ -892,12 +918,12 @@ uint16_t get_ptr_sparse(chunk_t *chunk, uint8_t addr) {
 
   if (addr >= chunk->sparse.heads[3]) { // search higher addresses
     for (i = 0; i < 4; i++) {
-      if (addr <= chunk->sparse.heads[i])
+      if (addr >= chunk->sparse.heads[i])
         return chunk->sparse.pointers[i];
     }
   } else { // search lower addresses
     for (i = 4; i < 8; i++) {
-      if (addr <= chunk->sparse.heads[i])
+      if (addr >= chunk->sparse.heads[i])
         return chunk->sparse.pointers[i];
     }
   }
