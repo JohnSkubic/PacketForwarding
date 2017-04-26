@@ -44,3 +44,4 @@ outputs/*
 !outputs/example_trace
 !outputs/scalable_example
 !outputs/scalable_example_trace
+!outputs/prefix*
