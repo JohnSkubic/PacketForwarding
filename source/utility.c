@@ -25,6 +25,12 @@ route_table_entry_t *create_routing_table (char *filename, int *size) {
   int count = 0;
   int num_lines = 0;  
   int i;
+  int masks[32];
+
+  masks[0] = 0x80000000;
+  for(i = 1; i < 32; i++) {
+    masks[i] = (masks[i-1] >> 1) | 0x80000000;
+  }
 
   if((fptr = fopen(filename, "r")) == NULL) {
     printf("Error: Failed to open file %s for reading\n", filename);
@@ -49,6 +55,10 @@ route_table_entry_t *create_routing_table (char *filename, int *size) {
     ip0 = ip0 | ((ip1 & 0x000000ff) << 8);
     ip0 = ip0 | ((ip2 & 0x000000ff) << 16);
     ip0 = ip0 | ((ip3 & 0x000000ff) << 24);
+    if (mask == 0)
+      ip0 = 0;
+    else
+      ip0 = ip0 & masks[mask-1];
     table_raw[count].dest_addr.address = ip0;
     table_raw[count].dest_addr.mask = mask;
     table_raw[count].next_hop_addr = count;
