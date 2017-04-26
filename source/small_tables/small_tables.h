@@ -135,5 +135,5 @@ void build_s_table_map_table(small_table_t *s_table,uint16_t *maptable);uint16_t
 uint16_t get_ptr_sparse(chunk_t *chunk, uint8_t addr);
 uint16_t get_ptr_dense(small_table_t *s_table, chunk_t *chunk, uint8_t addr, int level);
 uint16_t get_ptr_vdense(small_table_t *s_table, chunk_t *chunk, uint8_t addr, int level);
-
+int calc_s_table_size(small_table_t *s_table);
 #endif

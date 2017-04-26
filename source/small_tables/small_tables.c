@@ -118,6 +118,76 @@ uint16_t *build_map_table() {
   return ping;
 }
 
+// returns the size of the small table in bytes
+// This function only counts memory used at lookup
+// Variables used to build the table are omitted
+int calc_s_table_size(small_table_t *s_table) {
+  int size; 
+  int i;
+  uint16_t ptr;
+  uint8_t type;
+
+  // maptable, always same size
+  size = 676*8*sizeof(uint8_t);
+
+  // next hop table
+  size += s_table->num_entries * sizeof(uint32_t);
+
+  // ptr tables
+  size += s_table->n_l1_ptrs * sizeof(uint16_t);
+  size += s_table->n_l2_ptrs * sizeof(uint16_t);
+  size += s_table->n_l3_ptrs * sizeof(uint16_t);
+
+  // ptrs in the table
+  size += sizeof(cut_t); // l1
+  size += 2 * sizeof(chunk_t *);
+  size += 3 * sizeof(uint16_t *);
+
+
+  // l1 codewords
+  size += L1_N_CODEWORDS * sizeof(uint16_t);
+  // l1 bases
+  size += L1_N_BASES * sizeof(uint16_t);
+
+  // Iterate through L1 Ptrs to find types of chunks
+  for(i=0; i < s_table->n_l1_ptrs; i++) {
+    ptr = s_table->l1_ptr_table[i];
+    type = ptr >> 14;
+    if (type == PTR_TYPE_SPARSE)
+      size +=  8 * (sizeof(uint8_t) + sizeof(uint16_t));
+    else if (type == PTR_TYPE_DENSE) 
+      size += sizeof(uint16_t) + (16 * sizeof(uint16_t));
+    else if (type == PTR_TYPE_VERYDENSE)  
+      size += (4 * sizeof(uint16_t)) + (16 * sizeof(uint16_t));
+  }
+
+  // L2
+  for(i=0; i < s_table->n_l2_ptrs; i++) {
+    ptr = s_table->l2_ptr_table[i];
+    type = ptr >> 14;
+    if (type == PTR_TYPE_SPARSE)
+      size +=  8 * (sizeof(uint8_t) + sizeof(uint16_t));
+    else if (type == PTR_TYPE_DENSE) 
+      size += sizeof(uint16_t) + (16 * sizeof(uint16_t));
+    else if (type == PTR_TYPE_VERYDENSE)  
+      size += (4 * sizeof(uint16_t)) + (16 * sizeof(uint16_t));
+  }
+
+  // L3
+  for(i=0; i < s_table->n_l3_ptrs; i++) {
+    ptr = s_table->l3_ptr_table[i];
+    type = ptr >> 14;
+    if (type == PTR_TYPE_SPARSE)
+      size +=  8 * (sizeof(uint8_t) + sizeof(uint16_t));
+    else if (type == PTR_TYPE_DENSE) 
+      size += sizeof(uint16_t) + (16 * sizeof(uint16_t));
+    else if (type == PTR_TYPE_VERYDENSE)  
+      size += (4 * sizeof(uint16_t)) + (16 * sizeof(uint16_t));
+  }
+  
+  return size;
+ }
+
 small_table_t *build_small_table(route_table_entry_t *table, int table_size) {
 
   small_table_t *s_table;
@@ -217,7 +287,7 @@ small_table_t *build_small_table(route_table_entry_t *table, int table_size) {
   *
   */
 
-  printf("\nBUILDING LEVEL 3\n\n");
+  //printf("\nBUILDING LEVEL 3\n\n");
 
   int num_ptrs, num_chunks;
   int count;
@@ -249,7 +319,7 @@ small_table_t *build_small_table(route_table_entry_t *table, int table_size) {
   *
   */
 
-  printf("\nBUILDING LEVEL 2\n\n");
+  //printf("\nBUILDING LEVEL 2\n\n");
 
   num_ptrs = 0;
   num_chunks = 0;
@@ -273,7 +343,7 @@ small_table_t *build_small_table(route_table_entry_t *table, int table_size) {
   *
   */
   
-  printf("\nBUILDING LEVEL 1\n\n");
+  //printf("\nBUILDING LEVEL 1\n\n");
 
   num_ptrs = 0;
   num_chunks = 0;
@@ -314,6 +384,8 @@ small_table_t *build_small_table(route_table_entry_t *table, int table_size) {
     destroy_node(ptrs[i].next); 
   }
   free(ptrs);
+
+  printf("Size of Small Table : %d bytes\n", calc_s_table_size(s_table));
 
   return s_table;
 }

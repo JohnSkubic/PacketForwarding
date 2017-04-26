@@ -141,6 +141,7 @@ void test_routing_table(route_table_entry_t *trace, int num_tests, void *table, 
   uint32_t next_hop;
   clock_t start, end;
   double cpu_time_used;
+  int j;
 
   num_incorrect = 0;
 
@@ -155,14 +156,15 @@ void test_routing_table(route_table_entry_t *trace, int num_tests, void *table, 
 
   if (num_incorrect == 0) {
     start = clock();
-    
-    for(i = 0; i < num_tests; i++) {
-      next_hop = lookup(trace[i].dest_addr.address, table);
+    for(j = 0; j < N_REPEATS; j++) {
+      for(i = 0; i < num_tests; i++) {
+        next_hop = lookup(trace[i].dest_addr.address, table);
+      }
     }
 
     end = clock();
     cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
-    printf("Time Elapsed: %f Number of Lookups: %d\n", cpu_time_used, num_tests);
+    printf("Time Elapsed: %f Number of Lookups: %d\n", cpu_time_used, num_tests * N_REPEATS);
   }
 
 }
