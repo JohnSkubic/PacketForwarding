@@ -9,7 +9,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "utility.h"
 #include "scalable_tables.h"
 
 int main (int argc, char *argv[]) {
@@ -90,9 +89,32 @@ htable_t ** build_scalable_table(route_table_entry_t * table, int num_entries){
 	htable_t ** scalable_htables;
 	scalable_htables = init_scalable_htables((uint32_t)32);//init array of hash table pointers, IPv4 w/ notions to expandability to IPv6
 
+	bucket_t * testbucket;
+	uint32_t i;
+	for(i=0;i<32;i += 1){
+		// small hash table test of initial operability
+		printf("creating ");
+		scalable_htables[i]=htable_create(i+1);
+		printf("done and ");
+		htable_insert(scalable_htables[i],both_t,0xffffffff,0x10101010,0xf9f9f9f9,NULL);
+		printf("inserted at level: %d\n", i+1);
+	}
+	i=3;//level4
+	printf("search miss and ");
+	testbucket = htable_search(scalable_htables[i],(0xaabbaabb&scalable_htables[i]->mask));
+	printf("search hit and ");
+	testbucket = htable_search(scalable_htables[i],(0xffffffff&scalable_htables[i]->mask));
+	printf("prefix found: %x\n", testbucket->prefix);
+	//figure out core dump, get correct print,
+	//write a delete scalable tables or htables, or both one call other, to test deletions
+	//write overall scalable table data structure
+
 	//LOTS OF OTHER STUFF
 
-	return scalable_table;
+	//return value SHOULD BECOME THE YET TO BE CREATED OVERALL SCALABLE
+	//TABLE STRUCT WITH ROPES(at least the initial one, possibly array or
+	// ropes where id's are only thing stored in hash tables)
+	return scalable_htables;
 }
 
 htable_t ** init_scalable_htables(uint32_t num_levels){
@@ -103,7 +125,7 @@ htable_t ** init_scalable_htables(uint32_t num_levels){
 }
 
 void destroy_rope(rope_t * rope){
-	if(rope == NULL){return};//done
+	if(rope == NULL){return;}//done
 	destroy_rope(rope->nxt_rope_node);//walk llist
 	free(rope);//free this rope node
 	return;
@@ -119,7 +141,7 @@ htable_t * htable_create(uint32_t prefix_level){
 	uint32_t num_buckets,i;
 	uint32_t temp_key,shamt,shamt_mask;
 
-	num_buckets = (1 << prefix_level);//2 to power --> prefix_level
+	num_buckets = (prefix_level==32) ? 0x80000000 : (1 << prefix_level);//2 to power --> prefix_level
 	num_buckets = ( num_buckets < MAX_BUCKETS) ? num_buckets : MAX_BUCKETS ;//handles 0 returned by 2^32 if MAX_BUCKETS is that big
 
 	//for hash function, shamt would otherwise need to be computed on each call
@@ -140,19 +162,15 @@ htable_t * htable_create(uint32_t prefix_level){
 	htable->buckets = malloc(num_buckets*sizeof(bucket_t*));//moved to array of pointers to buckets, ptrs only populated if index used
 
 	//ptrs only populated if index used
-	for(i=0;i<(num_buckets-1);i++){
+	for(i=0;i < num_buckets ;i++){
 		htable->buckets[i] = NULL;
 	}
 
-	return table;
-}
-
-uint32_t htable_hash(htable_t * htable, uint32_t key){//uses log2(num_buckets) MSB bits as index into buckets **
-	return (key >> htable->shamt);//made possible by "pre"-calculation on htable creation
+	return htable;
 }
 
 bucket_t * htable_search(htable_t * htable, uint32_t prefix){//search for prefix in hash table
-	return htable_search_llist(htable->buckets[htable_hash(htable, prefix)],prefix);
+	return htable_search_llist(htable->buckets[htable_hash(htable, prefix)],(prefix& htable->mask));
                                              //^every search need not remember to call hash()
 }
 bucket_t * htable_search_llist(bucket_t * bucket, uint32_t prefix){
@@ -162,35 +180,44 @@ bucket_t * htable_search_llist(bucket_t * bucket, uint32_t prefix){
 	return htable_search_llist(bucket->nxt_bucket, prefix);//continue to search in collision resolved linked list
 }
 
+uint32_t htable_hash(htable_t * htable, uint32_t key){//uses log2(num_buckets) MSB bits as index into buckets **
+	return (key >> htable->shamt);//made possible by "pre"-calculation on htable creation
+}
+
 void htable_insert(htable_t * htable, bucket_type_t btype, uint32_t prefix, uint32_t bmp, uint32_t nxt_hop_addr, rope_t * rope){//remember to have already and-ed with mask provided in hash table struct
 	//overwrites duplicates -- existing matching prefix entries
-	uint32_t index;
-	index = htable_hash(htable, prefix);
+	uint32_t ht_index;
+	ht_index = htable_hash(htable, prefix);
 
 	//malloc and assemble new bucket_t
 	bucket_t * n_bucket;
 	n_bucket = malloc(sizeof(bucket_t));
-	n_bucket->btype = btype;
+	n_bucket->bucket_type = btype;
+	n_bucket->prefix = prefix & htable->mask;
+	n_bucket->bmp = bmp;
+	n_bucket->nxt_hop_addr = nxt_hop_addr;
+	n_bucket->new_rope = rope;
 
 	//increment entries in this hash table
 	//to handle duplicates (marker, prefix to both) htable_insert_llist will decrement
 	htable->num_entries++;
 
-	//bucket does not exist at this index yet
+	//bucket does not exist at this ht_index yet
 	//htable_insert_llist will increment, because it will appear as null, counteract this
-	if(htable->buckets[index] == NULL){	htable->num_collisions--; }
+	if(htable->buckets[ht_index] == NULL){	htable->num_collisions--; }
 
 	//insert into hash table
 	//resolve collisions, should they exist
-	htable->buckets[index] = htable_insert_llist(htable->buckets[index], n_bucket, htable);
+	htable->buckets[ht_index] = htable_insert_llist(htable->buckets[ht_index], n_bucket, htable);
 }
-bucket_t * htable_insert_llist(bucket_t * bucket_ll, bucket * n_bucket, htable_t * htable){
+bucket_t * htable_insert_llist(bucket_t * bucket_ll, bucket_t * n_bucket, htable_t * htable){
 	//insert at end of list, order doesn't matter as lookups are random :(
 
 	//new insertion
-	if(bucket == NULL){//inserting means collision
+	if(bucket_ll == NULL){
+		//inserting means collision
 		//except for 1st insert, which is accounted for by caller
-		htable_t->num_collisions++;
+		htable->num_collisions++;
 		
 		return n_bucket;		
 	}
@@ -204,6 +231,7 @@ bucket_t * htable_insert_llist(bucket_t * bucket_ll, bucket * n_bucket, htable_t
 	}
 	else //walk llist
 		bucket_ll->nxt_bucket = htable_insert_llist(bucket_ll->nxt_bucket, n_bucket, htable);
+	return bucket_ll;
 }
 
 void htable_delete(htable_t * htable){

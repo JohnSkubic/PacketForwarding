@@ -30,7 +30,7 @@ struct trie_node_t {
 	uint32_t prefixlen;//this node's prefix length
 	uint32_t mask;//example --> 0xFFFF8000 (prefixlen=17)
 	uint32_t real_prefix;//not a marker trie node
-	uint32_t next_hop_addr;//only populated if real prefix, bmp in scalable
+	uint32_t nxt_hop_addr;//only populated if real prefix, bmp in scalable
 
 	trie_node_t * left;
 	trie_node_t * right;
@@ -38,14 +38,19 @@ struct trie_node_t {
 //SCALABLE TABLES
 //buckets are nodes of scalable tables, inserted in hash tables
 //bucket type
-enum bucket_type_t {
-	prefix,
-	marker,
-	both, //prefix and marker
-	empty //empty - not really used since moving to array of pointers to buckets
+typedef enum bucket_type_t {
+	prefix_t,
+	marker_t,
+	both_t, //prefix and marker
+	empty_t //empty - not really used since moving to array of pointers to buckets
+} bucket_type_t;
+typedef struct rope_t rope_t;
+struct rope_t {
+	uint32_t level;
+	rope_t * nxt_rope_node;
 };
-typedef enum bucket_type_t bucket_type_t;
 //individual bucket of hash table
+typedef struct bucket_t bucket_t;
 struct bucket_t {
 	bucket_t * nxt_bucket;//linked list for collision resolution
 	bucket_type_t bucket_type;//prefix, marker, or both, or empty
@@ -57,14 +62,9 @@ struct bucket_t {
 	//next search tree to use -- fill in when implementing ropes/mutated binary search
 	rope_t * new_rope;//new rope to use for search (hash success, but marker)
 };
-typedef struct bucket_t bucket_t;
-struct rope_t {
-	uint32_t level;
-	rope_t * nxt_rope_node;
-}
-typedef struct rope_t rope_t;
 //HASH TABLES
 //per prefix-level struct
+typedef struct htable_t htable_t;
 struct htable_t {
 	//hash table statistics
 	uint32_t level;//number of buckets cannot exceed 2^(prefix level)
@@ -75,9 +75,8 @@ struct htable_t {
 	uint32_t num_collisions;//metric for resizing decision
 	
 	//actual hash table
-	bucket ** buckets;//ptr to array of buckets[num_entries]
+	bucket_t ** buckets;//ptr to array of buckets[num_entries]
 };
-typedef struct htable_t htable_t;
 	
 //****functions****
 
@@ -103,16 +102,16 @@ void destroy_rope(rope_t * rope);
 //valid prefix_levevls are 1 to 32 inclusive
 htable_t * htable_create (uint32_t prefix_level);
 void htable_delete(htable_t * htable);
-void htable_llist_delete(bucket_t * bucket);//delete collision resolution llist at an index in bucket ptr array
+void htable_delete_llist(bucket_t * bucket);//delete collision resolution llist at an index in bucket ptr array
 //prefix must match format for corresponding prefix level
-void htable_insert(htable_t * htable, uint32_t prefix);//prefix must be masked according to level already
-bucket_t * htable_insert_llist(bucket_t * bucket, uint32_t index);//linked list insert for collision resolution0
+void htable_insert(htable_t * htable, bucket_type_t btype, uint32_t prefix, uint32_t bmp, uint32_t nxt_hop_addr, rope_t * rope);//prefix must be masked according to level already
+bucket_t * htable_insert_llist(bucket_t * bucket_ll, bucket_t * n_bucket, htable_t * htable);//linked list insert for collision resolution0
 //key is prefix, masked to length of corresponding prefix level
 //returns index into hast table
 uint32_t htable_hash(htable_t * htable, uint32_t key);
 //uses index to search entry or linked list at index for prefix
-bucket_t * htable_search(htable_t * htable, , bucket_type_t btype, uint32_t prefix, uint32_t bmp, uint32_t nxt_hop_addr, rope_t * rope);
-bucket_t * htable_search_llist(bucket_t * bucket_ll, bucket * n_bucket, htable_t * htable);//index=htable_hash(prefix), bucket_t*=htable[prefixlevel]->buckets[]
+bucket_t * htable_search(htable_t * htable, uint32_t prefix);
+bucket_t * htable_search_llist(bucket_t * bucket, uint32_t prefix);//index=htable_hash(prefix), bucket_t*=htable[prefixlevel]->buckets[]
 
 //*****FUTURE UPGRADE*****
 //htable_t* htable_resize(htable_t * htable);//doubles the size of buckets, copies old bucket entries into correct new buckets, deletes old buckets
