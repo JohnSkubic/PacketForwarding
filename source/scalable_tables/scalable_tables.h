@@ -89,17 +89,17 @@ prefix_len_below_t * insert_prefix_len_below(prefix_len_below_t * prefix_len_bel
 void destroy_prefix_len_below(prefix_len_below_t * prefix_len_below);
 void destroy_trie_table(trie_node_t * trie);
 //transform trie to scalable table -- trie output fxs
-void trie_level_read(trie_node_t *,uint32_t prefixlevel);//walk trie levels, output contents at input level
 
 //Scalable table functions
 //per paper's recommended rope-based scalable table build procedure,
 //second pass to build ropes and hash tables, using conventional trie from first pass
-htable_t ** build_scalable_table(trie_node_t * trie route_table_entry_t * table, int num_entries);
+htable_t ** build_scalable_table(trie_node_t * trie, int num_entries);
 htable_t ** init_scalable_htables(uint32_t num_levels);//initializes array of hash tables,32 levels for IPv4, BEWARE
 void destroy_scalable_table(htable_t ** scalable_htables, uint32_t num_levels);
 void destroy_scalable_htables(htable_t ** scalable_htables, uint32_t num_levels);
 //ropes guide level search for scalable tables
 void destroy_rope(rope_t * rope);
+void trie_level_read_scalable_insert(trie_node_t *,uint32_t prefixlevel);//walk a trie level, insert into scalable t
 
 //Custom hash table functions
 //custom/tightly integrated to scalable tables

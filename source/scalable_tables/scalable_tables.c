@@ -64,7 +64,7 @@ int main (int argc, char *argv[]) {
 
   // 2nd pass -- scalable table = ropes and hash tables
   htable_t ** scalable_table = NULL;
-  if((scalable_table = build_scalable_table(table, num_entries)) == NULL) {
+  if((scalable_table = build_scalable_table(trie, num_entries)) == NULL) {
     printf("Error: Could not build scalable table\n");
     return EXIT_FAILURE;
   }
@@ -85,7 +85,7 @@ int main (int argc, char *argv[]) {
 
 // ********** BEGIN SCALABLE FUNCTIONS **********
 
-htable_t ** build_scalable_table(route_table_entry_t * table, int num_entries){
+htable_t ** build_scalable_table(trie_node_t * trie, int num_entries){//convert trie into scalable table (2nd pass)
 	htable_t ** scalable_htables;
 	//rope_t * initial_rope;
 
@@ -116,12 +116,17 @@ htable_t ** build_scalable_table(route_table_entry_t * table, int num_entries){
 		testbucket = htable_search(scalable_htables[i],(0xffffefff));
 		if(testbucket)/*not null*/printf("prefix found: %x\n", testbucket->prefix);
 	}
+	// **** END HASH TABLES TESTING ****
 
+	//TODO
 	//figure out core dump, get correct print, DONE
 	//write a delete scalable tables or htables, or both one call other, to test deletions
 	//write overall scalable table data structure
 
-	//LOTS OF OTHER STUFF
+	for(i=1;i<=32;i++){
+		printf("LEVEL: %d\n", i);
+		trie_level_read_scalable_insert(trie,i);//,scalable_htables);
+	}
 
 	//return value SHOULD BECOME THE YET TO BE CREATED OVERALL SCALABLE
 	//TABLE STRUCT WITH ROPES(at least the initial one, possibly array or
@@ -401,6 +406,18 @@ void destroy_prefix_len_below(prefix_len_below_t * prefix_len_below){
 
 	free(prefix_len_below);
 	return;
+}
+
+void trie_level_read_scalable_insert(trie_node_t * trie, uint32_t prefixlevel){
+	if(trie==NULL) return;
+	else if(trie->prefixlen == prefixlevel){//output this node, part of level reading on
+		//INSERT????? or calculate rope then insert at corresponding htable level?
+		printf("prefix: %x, nb: %d, real: %d \n", trie->prefix, trie->n_prefix_below,trie->real_prefix);
+		return;//not interested in anything below level being read at(this one), don't further recursion
+	}
+
+	trie_level_read_scalable_insert(trie->left , prefixlevel);
+	trie_level_read_scalable_insert(trie->right, prefixlevel);
 }
 
 // ********** END TRIE FUNCTIONS **********
