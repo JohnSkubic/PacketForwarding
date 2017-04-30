@@ -70,7 +70,8 @@ struct htable_t {
 	uint32_t level;//number of buckets cannot exceed 2^(prefix level)
 	uint32_t num_buckets;//current buckets in htable
 	uint32_t shamt;//shift amount to hash on, compute once, not on every hash call
-	uint32_t mask;//mask to obtain appropriate MSBs off of prefix for level of hashtable
+	uint32_t mask;//mask to obtain index into hashtable off of prefix
+	uint32_t lmask;//mask for prefix MSBs to include at level
 	uint32_t num_entries;//current entries in htable
 	uint32_t num_collisions;//metric for resizing decision
 	
@@ -87,12 +88,15 @@ trie_node_t * insert_trie_node(trie_node_t * trie, route_table_entry_t * table_e
 prefix_len_below_t * insert_prefix_len_below(prefix_len_below_t * prefix_len_below, route_table_entry_t * table_entry,uint32_t * duplicate);
 void destroy_prefix_len_below(prefix_len_below_t * prefix_len_below);
 void destroy_trie_table(trie_node_t * trie);
+//transform trie to scalable table -- trie output fxs
+void trie_level_read(trie_node_t *,uint32_t prefixlevel);//walk trie levels, output contents at input level
 
 //Scalable table functions
 //per paper's recommended rope-based scalable table build procedure,
 //second pass to build ropes and hash tables, using conventional trie from first pass
-htable_t ** build_scalable_table(route_table_entry_t * table, int num_entries);
+htable_t ** build_scalable_table(trie_node_t * trie route_table_entry_t * table, int num_entries);
 htable_t ** init_scalable_htables(uint32_t num_levels);//initializes array of hash tables,32 levels for IPv4, BEWARE
+void destroy_scalable_table(htable_t ** scalable_htables, uint32_t num_levels);
 void destroy_scalable_htables(htable_t ** scalable_htables, uint32_t num_levels);
 //ropes guide level search for scalable tables
 void destroy_rope(rope_t * rope);

@@ -87,8 +87,11 @@ int main (int argc, char *argv[]) {
 
 htable_t ** build_scalable_table(route_table_entry_t * table, int num_entries){
 	htable_t ** scalable_htables;
+	//rope_t * initial_rope;
+
 	scalable_htables = init_scalable_htables((uint32_t)32);//init array of hash table pointers, IPv4 w/ notions to expandability to IPv6
 
+	// **** HASH TABLES TESTING ****
 	bucket_t * testbucket;
 	uint32_t i;
 	for(i=0;i<32;i += 1){
@@ -96,16 +99,25 @@ htable_t ** build_scalable_table(route_table_entry_t * table, int num_entries){
 		printf("creating ");
 		scalable_htables[i]=htable_create(i+1);
 		printf("done and ");
+		htable_insert(scalable_htables[i],both_t,0xaabbffff,0x10101010,0xf9f9f9f9,NULL);
 		htable_insert(scalable_htables[i],both_t,0xffffffff,0x10101010,0xf9f9f9f9,NULL);
+		htable_insert(scalable_htables[i],both_t,0xffffefff,0x10101010,0xf9f9f9f9,NULL);
+		htable_insert(scalable_htables[i],both_t,0xfeffffff,0x10101010,0xf9f9f9f9,NULL);
 		printf("inserted at level: %d\n", i+1);
+
+		//test search
+		printf("searching:\n");
+		testbucket = htable_search(scalable_htables[i],(0xaabbaabb));
+		if(testbucket)/*not null*/printf("prefix found: %x\n", testbucket->prefix);
+		testbucket = htable_search(scalable_htables[i],(0xffffffff));
+		if(testbucket)/*not null*/printf("prefix found: %x\n", testbucket->prefix);
+		testbucket = htable_search(scalable_htables[i],(0xfeffffff));
+		if(testbucket)/*not null*/printf("prefix found: %x\n", testbucket->prefix);
+		testbucket = htable_search(scalable_htables[i],(0xffffefff));
+		if(testbucket)/*not null*/printf("prefix found: %x\n", testbucket->prefix);
 	}
-	i=3;//level4
-	printf("search miss and ");
-	testbucket = htable_search(scalable_htables[i],(0xaabbaabb&scalable_htables[i]->mask));
-	printf("search hit and ");
-	testbucket = htable_search(scalable_htables[i],(0xffffffff&scalable_htables[i]->mask));
-	printf("prefix found: %x\n", testbucket->prefix);
-	//figure out core dump, get correct print,
+
+	//figure out core dump, get correct print, DONE
 	//write a delete scalable tables or htables, or both one call other, to test deletions
 	//write overall scalable table data structure
 
@@ -138,11 +150,11 @@ void destroy_rope(rope_t * rope){
 //valid prefix_levels 1 to 32 inclusive 
 htable_t * htable_create(uint32_t prefix_level){
 	htable_t * htable;
-	uint32_t num_buckets,i;
-	uint32_t temp_key,shamt,shamt_mask;
+	uint32_t orig_num_buckets,num_buckets,i;
+	uint32_t temp_key,shamt,shamt_mask,level_mask;
 
-	num_buckets = (prefix_level==32) ? 0x80000000 : (1 << prefix_level);//2 to power --> prefix_level
-	num_buckets = ( num_buckets < MAX_BUCKETS) ? num_buckets : MAX_BUCKETS ;//handles 0 returned by 2^32 if MAX_BUCKETS is that big
+	orig_num_buckets = (prefix_level==32) ? 0x80000000 : (1 << prefix_level);//2 to power --> prefix_level
+	num_buckets = ( orig_num_buckets < MAX_BUCKETS) ? orig_num_buckets : MAX_BUCKETS ;//handles 0 returned by 2^32 if MAX_BUCKETS is that big
 
 	//for hash function, shamt would otherwise need to be computed on each call
 	//compute once on creation, not per call to htable_hash()
@@ -151,12 +163,17 @@ htable_t * htable_create(uint32_t prefix_level){
 	while(temp_key >>= 1) ++shamt_mask;//shamt=log2(num_buckets),2^shamt=num_buckets
 	shamt = 32 - shamt_mask;//prefix lookups implies interest in MSB bits
 
+	level_mask =0;
+	temp_key = orig_num_buckets;//to mask for actual number of level (supports when fewer buckets than 2^level)
+	while(temp_key >>= 1) ++level_mask;
+
 	//initialize hash table
 	htable = malloc(sizeof(htable_t));
 	htable->level = prefix_level;
 	htable->num_buckets = num_buckets;
 	htable->shamt = shamt;//used by hash function
-	htable->mask = (shamt_mask == 0) ? 0x00000000 : (0xFFFFFFFF << (32-shamt_mask));//used before calling or by insert functions
+	htable->mask = (shamt_mask == 0) ? 0x00000000 : (0xFFFFFFFF << (32-shamt_mask));//used for inserting at correct prefix
+	htable->lmask = (level_mask == 0) ? 0x00000000 : (0xFFFFFFFF << (32-level_mask));//used for inserting/searching prefix
 	htable->num_entries = 0;
 	htable->num_collisions = 0;
 	htable->buckets = malloc(num_buckets*sizeof(bucket_t*));//moved to array of pointers to buckets, ptrs only populated if index used
@@ -170,7 +187,7 @@ htable_t * htable_create(uint32_t prefix_level){
 }
 
 bucket_t * htable_search(htable_t * htable, uint32_t prefix){//search for prefix in hash table
-	return htable_search_llist(htable->buckets[htable_hash(htable, prefix)],(prefix& htable->mask));
+	return htable_search_llist(htable->buckets[htable_hash(htable, prefix)],(prefix& htable->lmask));
                                              //^every search need not remember to call hash()
 }
 bucket_t * htable_search_llist(bucket_t * bucket, uint32_t prefix){
@@ -193,7 +210,7 @@ void htable_insert(htable_t * htable, bucket_type_t btype, uint32_t prefix, uint
 	bucket_t * n_bucket;
 	n_bucket = malloc(sizeof(bucket_t));
 	n_bucket->bucket_type = btype;
-	n_bucket->prefix = prefix & htable->mask;
+	n_bucket->prefix = prefix & htable->lmask;
 	n_bucket->bmp = bmp;
 	n_bucket->nxt_hop_addr = nxt_hop_addr;
 	n_bucket->new_rope = rope;
