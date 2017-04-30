@@ -39,7 +39,7 @@ struct trie_node_t {
 //buckets are nodes of scalable tables, inserted in hash tables
 //bucket type
 typedef enum bucket_type_t {
-	prefix_t,
+	prefix_t=0,
 	marker_t,
 	both_t, //prefix and marker
 	empty_t //empty - not really used since moving to array of pointers to buckets
@@ -95,11 +95,10 @@ void destroy_trie_table(trie_node_t * trie);
 //second pass to build ropes and hash tables, using conventional trie from first pass
 htable_t ** build_scalable_table(trie_node_t * trie, int num_entries);
 htable_t ** init_scalable_htables(uint32_t num_levels);//initializes array of hash tables,32 levels for IPv4, BEWARE
-void destroy_scalable_table(htable_t ** scalable_htables, uint32_t num_levels);
-void destroy_scalable_htables(htable_t ** scalable_htables, uint32_t num_levels);
+void destroy_scalable_table(htable_t ** scalable_htables);
 //ropes guide level search for scalable tables
 void destroy_rope(rope_t * rope);
-void trie_level_read_scalable_insert(trie_node_t *,uint32_t prefixlevel);//walk a trie level, insert into scalable t
+void trie_level_read_scalable_insert(trie_node_t *, uint32_t prefixlevel, htable_t ** scalable_htables);//walk a trie level, insert into scalable t
 
 //Custom hash table functions
 //custom/tightly integrated to scalable tables

@@ -72,13 +72,13 @@ int main (int argc, char *argv[]) {
   destroy_trie_table(trie);
 
   // Run test (fourth argument is function pointer to lookup function)
-  printf("Testing scalable tables\n");
+  //*****printf("Testing scalable tables\n");
   //test_routing_table(trace, num_tests, (void*)*****s_table, *****lookup_small_table);
 
   /* Free Resources */
   destroy_routing_table(table);
   destroy_routing_table(trace);
-  //*****destroy_scalable_table(*****s_table);
+  destroy_scalable_table(scalable_table);
 
   return EXIT_SUCCESS;
 }
@@ -88,45 +88,33 @@ int main (int argc, char *argv[]) {
 htable_t ** build_scalable_table(trie_node_t * trie, int num_entries){//convert trie into scalable table (2nd pass)
 	htable_t ** scalable_htables;
 	//rope_t * initial_rope;
+	uint32_t i;
 
+	//create array of hashtables
 	scalable_htables = init_scalable_htables((uint32_t)32);//init array of hash table pointers, IPv4 w/ notions to expandability to IPv6
 
-	// **** HASH TABLES TESTING ****
-	bucket_t * testbucket;
-	uint32_t i;
-	for(i=0;i<32;i += 1){
-		// small hash table test of initial operability
-		printf("creating ");
-		scalable_htables[i]=htable_create(i+1);
-		printf("done and ");
-		htable_insert(scalable_htables[i],both_t,0xaabbffff,0x10101010,0xf9f9f9f9,NULL);
-		htable_insert(scalable_htables[i],both_t,0xffffffff,0x10101010,0xf9f9f9f9,NULL);
-		htable_insert(scalable_htables[i],both_t,0xffffefff,0x10101010,0xf9f9f9f9,NULL);
-		htable_insert(scalable_htables[i],both_t,0xfeffffff,0x10101010,0xf9f9f9f9,NULL);
-		printf("inserted at level: %d\n", i+1);
-
-		//test search
-		printf("searching:\n");
-		testbucket = htable_search(scalable_htables[i],(0xaabbaabb));
-		if(testbucket)/*not null*/printf("prefix found: %x\n", testbucket->prefix);
-		testbucket = htable_search(scalable_htables[i],(0xffffffff));
-		if(testbucket)/*not null*/printf("prefix found: %x\n", testbucket->prefix);
-		testbucket = htable_search(scalable_htables[i],(0xfeffffff));
-		if(testbucket)/*not null*/printf("prefix found: %x\n", testbucket->prefix);
-		testbucket = htable_search(scalable_htables[i],(0xffffefff));
-		if(testbucket)/*not null*/printf("prefix found: %x\n", testbucket->prefix);
+	//walk trie, insert into scalable table
+	for(i=1;i<=32;i++){
+		printf("LEVEL: %d\n", i);
+		scalable_htables[i-1]=htable_create(i);//levels are 1 indexed, array of htables is 0 indexed (1 to 32 length prefixes, 0 length is the default address)
+		//htable_insert(scalable_htables[i-1],marker_t, 0xcccc1800,5,4,NULL);
+		trie_level_read_scalable_insert(trie,i,scalable_htables);
 	}
-	// **** END HASH TABLES TESTING ****
+
+	// **** SCALABLE INSERT TESTING ****
+	/*bucket_t * testbucket;
+	for(i=0;i<32;i++){
+		testbucket = htable_search(scalable_htables[i],(0xcccc0000));
+		if(testbucket) printf("prefix found: %x level: %d type: %d\n", testbucket->prefix, (i+1), (uint32_t)testbucket->bucket_type);//not null
+		testbucket = htable_search(scalable_htables[i],(0xcccc1800));
+		if(testbucket) printf("prefix found: %x level: %d type: %d\n", testbucket->prefix, (i+1),(uint32_t)testbucket->bucket_type);//not null
+	}*/
+	// **** END SCALABLE INSERT TESTING ****
 
 	//TODO
 	//figure out core dump, get correct print, DONE
 	//write a delete scalable tables or htables, or both one call other, to test deletions
 	//write overall scalable table data structure
-
-	for(i=1;i<=32;i++){
-		printf("LEVEL: %d\n", i);
-		trie_level_read_scalable_insert(trie,i);//,scalable_htables);
-	}
 
 	//return value SHOULD BECOME THE YET TO BE CREATED OVERALL SCALABLE
 	//TABLE STRUCT WITH ROPES(at least the initial one, possibly array or
@@ -146,6 +134,17 @@ void destroy_rope(rope_t * rope){
 	destroy_rope(rope->nxt_rope_node);//walk llist
 	free(rope);//free this rope node
 	return;
+}
+
+void destroy_scalable_table(htable_t ** scalable_table){
+	uint32_t i;
+
+	//destroy hashtables and contents
+	for(i=0;i<32;i++){
+		htable_delete(scalable_table[i]);
+	}
+	//free array of hashtable pointers
+	free(scalable_table);
 }
 
 // ********** END SCALABLE FUNCTIONS **********
@@ -258,9 +257,10 @@ bucket_t * htable_insert_llist(bucket_t * bucket_ll, bucket_t * n_bucket, htable
 
 void htable_delete(htable_t * htable){
 	uint32_t i;
+	if(htable==NULL) return;//unused hashtable
 	//free any existing buckets and possibly,
 	//associated llists due to collision resolution
-	for(i=0; i < (htable->num_entries); i++){
+	for(i=0; i < (htable->num_buckets); i++){
 		htable_delete_llist(htable->buckets[i]);
 	}
 	//free array of bucket pointers
@@ -408,16 +408,21 @@ void destroy_prefix_len_below(prefix_len_below_t * prefix_len_below){
 	return;
 }
 
-void trie_level_read_scalable_insert(trie_node_t * trie, uint32_t prefixlevel){
+//this part of the build algorithm is poorly described by the paper
+void trie_level_read_scalable_insert(trie_node_t * trie, uint32_t prefixlevel, htable_t ** scalable_htables){
 	if(trie==NULL) return;
 	else if(trie->prefixlen == prefixlevel){//output this node, part of level reading on
 		//INSERT????? or calculate rope then insert at corresponding htable level?
+		//search first to see if it is both???? htablesearch?
+		// bucket_type_t btype, uint32_t prefix, uint32_t bmp, uint32_t nxt_hop_addr, rope_t * rope);
+		//change rope to a bit field?
+		htable_insert(scalable_htables[prefixlevel-1],((trie->real_prefix) ? prefix_t : marker_t), trie->prefix,5,4,NULL);
 		printf("prefix: %x, nb: %d, real: %d \n", trie->prefix, trie->n_prefix_below,trie->real_prefix);
 		return;//not interested in anything below level being read at(this one), don't further recursion
 	}
 
-	trie_level_read_scalable_insert(trie->left , prefixlevel);
-	trie_level_read_scalable_insert(trie->right, prefixlevel);
+	trie_level_read_scalable_insert(trie->left , prefixlevel, scalable_htables);
+	trie_level_read_scalable_insert(trie->right, prefixlevel, scalable_htables);
 }
 
 // ********** END TRIE FUNCTIONS **********
