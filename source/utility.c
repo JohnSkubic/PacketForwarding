@@ -70,7 +70,7 @@ route_table_entry_t *create_routing_table (char *filename, int *size) {
   mergesort(table_raw, num_lines, MASK_LEN);
   mergesort(table_raw, num_lines, IP_ADDR);
   for(i = 1; i < num_lines; i++) {
-    if(!compare_route_table_entries(table_raw[i], table_raw[i-1]))
+    if(!compare_route_table_entries(table_raw[i], table_raw[i-1]) && (table_raw[i].dest_addr.mask <=32))
       *size = (*size)++;
   }
   
@@ -81,14 +81,19 @@ route_table_entry_t *create_routing_table (char *filename, int *size) {
     return NULL;
   }
 
+  long int mask_sum = table_raw[0].dest_addr.mask;
+
   table[0] = table_raw[0];
   *size = 1;
   for(i = 1; i < num_lines; i++) {
-    if(!compare_route_table_entries(table_raw[i], table_raw[i-1])) {
+    if((!compare_route_table_entries(table_raw[i], table_raw[i-1])) && (table[i].dest_addr.mask <=32)) {
       table[*size] = table_raw[i];
       *size = (*size)++;
+      mask_sum += table[i].dest_addr.mask;
     }
   }
+
+  printf("Average Prefix Length: %ld\n", mask_sum/(*size));
 
   free(table_raw);
   fclose(fptr);
@@ -165,16 +170,18 @@ void test_routing_table(route_table_entry_t *trace, int num_tests, void *table, 
   }
 
   if (num_incorrect == 0) {
+    j = 0;
     start = clock();
-    for(j = 0; j < N_REPEATS; j++) {
+    while (j < N_TESTS) {
       for(i = 0; i < num_tests; i++) {
         next_hop = lookup(trace[i].dest_addr.address, table);
       }
+      j += i;
     }
-
     end = clock();
     cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
-    printf("Time Elapsed: %f Number of Lookups: %d\n", cpu_time_used, num_tests * N_REPEATS);
+    printf("Time Elapsed: %f Number of Lookups: %d\n", cpu_time_used, j);
+    printf("Num Lookups Per Second: %dk\n", (int)(j / cpu_time_used)/1000);
   }
 
 }
