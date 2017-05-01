@@ -2,7 +2,7 @@
  *
  *  Created By: John Skubic 
  *
- *  Description:
+ *  Description: Small tables implementation as described in Sigcomm '97
  *
  */
 
