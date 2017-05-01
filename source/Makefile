@@ -1,9 +1,9 @@
 CC=gcc
-CFLAGS= -Ismall_tables/ -Iscalable_tables/ -I ./ -Wall -Wshadow -O0 -g -gdwarf-2 
+CFLAGS= -Ismall_tables/ -Iscalable_tables/ -I/linear_search_tables/ -I ./ -Wall -Wshadow -O0 -g -gdwarf-2 
 all: clean scalable_tables small_tables
 
 clean:
-	rm scalable_tables/*.o scalable_tables/*.gch rm small_tables/*.o rm small_tables/*.gch rm *.o rm *.gch *.out
+	rm -f scalable_tables/*.o scalable_tables/*.gch small_tables/*.o small_tables/*.gch *.o *.gch *.out linear_search_tables/*.o linear_search_tables/*.gch
 
 scalable_tables: scalable_tables.o utility.o
 	$(CC) $(CFLAGS) -o scalable_tables.out scalable_tables.o utility.o
@@ -19,6 +19,12 @@ small_tables.o: small_tables/small_tables.c small_tables/small_tables.h utility.
 
 utility.o: utility.h utility.c
 	$(CC) $(CFLAGS) -c utility.c utility.h
+
+linear_search_tables: linear_search_tables.o utility.o
+	$(CC) $(CFLAGS) -o linear_search_tables.out linear_search_tables.o utility.o
+
+linear_search_tables.o: linear_search_tables/linear_search_tables.c linear_search_tables/linear_search_tables.h utility.c utility.h
+	$(CC) $(CFLAGS) -c linear_search_tables/linear_search_tables.c utility.h
 
 %.run: $*
 	@echo -e "\nSTARTING SHORT PREFIX SMALL\n"
