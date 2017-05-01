@@ -20,4 +20,18 @@ small_tables.o: small_tables/small_tables.c small_tables/small_tables.h utility.
 utility.o: utility.h utility.c
 	$(CC) $(CFLAGS) -c utility.c utility.h
 
+%.run: $*
+	@echo -e "\nSTARTING SHORT PREFIX SMALL\n"
+	./$*.out ../outputs/shorter_prefix/small_test ../outputs/shorter_prefix/small_test_trace
+	@echo -e "\nSTARTING SHORT PREFIX LARGE\n"
+	./$*.out ../outputs/shorter_prefix/large_test ../outputs/shorter_prefix/large_test_trace
+	@echo -e "\nSTARTING LONG PREFIX SMALL\n"
+	./$*.out ../outputs/longer_prefix/small_test ../outputs/longer_prefix/small_test_trace
+	@echo -e "\nSTARTING LONG PREFIX LARGE\n"
+	./$*.out ../outputs/longer_prefix/large_test ../outputs/longer_prefix/large_test_trace
+	@echo -e "\nSTARTING LARGE SET\n"
+	./$*.out ../outputs/example ../outputs/example_trace
+	@echo -e "\nTESTING COMPLETED..."
 
+%.runtest: $*
+	./$*.out ../outputs/test ../outputs/example_trace

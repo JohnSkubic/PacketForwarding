@@ -23,6 +23,10 @@ void print_tree(node_t *node, int depth) {
   printf("DEPTH: %d Addr: %x Type: %d Nhop: %d\n", depth, node->addr, node->type, node->nhop);
 }
 
+int l1_found;
+int l2_found;
+int l3_found;
+
 
 int main (int argc, char *argv[]) {
   route_table_entry_t *table;
@@ -38,7 +42,7 @@ int main (int argc, char *argv[]) {
 
   /* Build Routing Table */
 
-  printf("Building the routing table\n");
+  //printf("Building the routing table\n");
   if((table = create_routing_table(argv[1], &num_entries)) == NULL) {
     printf("Error: Could not create routing table from file %s\n", argv[1]);
   }
@@ -48,19 +52,19 @@ int main (int argc, char *argv[]) {
   /* Sort Routing Table */
 
   //Sort Routing Table (Mergesort)
-  printf("Building gold model\n");
+  //printf("Building gold model\n");
   mergesort(table, num_entries, MASK_LEN);
-  printf("Gold model sanity check: ");
+  //printf("Gold model sanity check: ");
   for (i=0; i < num_entries-1; i++) {
     if (table[i].dest_addr.mask < table[i+1].dest_addr.mask) {
       printf("Error at idx: %d\n", i);
       return EXIT_FAILURE;
     } 
   }
-  printf("PASSED\n");
+  //printf("PASSED\n");
 
   /* Build Trace Array with Gold Outputs */
-  printf("Generating expected outputs\n");
+  //printf("Generating expected outputs\n");
   if((trace = create_trace(argv[2], table, num_entries, &num_tests)) == NULL) {
     printf("Error: Could not create trace from file %s\n", argv[2]);
   }
@@ -77,8 +81,15 @@ int main (int argc, char *argv[]) {
   //printf("INFO:\nL1_PTRS: %d\nL2_PTRS: %d\nL3_PTRS:%d\n", s_table->n_l1_ptrs, s_table->n_l2_ptrs, s_table->n_l3_ptrs);
 
   // Run test (second argument is function pointer)
-  printf("Testing small tables\n");
+  //printf("Testing small tables\n");
+  l1_found = 0;
+  l2_found = 0;
+  l3_found = 0;
   test_routing_table(trace, num_tests, (void*)s_table, lookup_small_table);
+
+  printf("Percent lookups found in L1: %.2f\n", (((float)l1_found / (float)(l1_found + l2_found + l3_found)) * 100.0));
+  printf("Percent lookups found in L2: %.2f\n", (((float)l2_found / (float)(l1_found + l2_found + l3_found)) * 100.0));
+  printf("Percent lookups found in L3: %.2f\n", (((float)l3_found / (float)(l1_found + l2_found + l3_found)) * 100.0));
 
   /* Free Resources */
   destroy_routing_table(table);
@@ -923,9 +934,10 @@ uint32_t lookup_small_table(uint32_t dest_ip, void *table) {
   ptr_type = curr_ptr >> 14;
 
   // Search L2
-  if (ptr_type == PTR_TYPE_NH) 
+  if (ptr_type == PTR_TYPE_NH) { 
+    l1_found++;
     return s_table->next_hop_table[curr_ptr];
-  else { //ptr to lower chunk
+  } else { //ptr to lower chunk
     chunk = &(s_table->l2[curr_ptr & 0x3fff]);
     chunk_addr = (dest_ip & 0x0000ff00) >> 8;
     if (ptr_type == PTR_TYPE_SPARSE) 
@@ -935,13 +947,13 @@ uint32_t lookup_small_table(uint32_t dest_ip, void *table) {
     else if (ptr_type == PTR_TYPE_VERYDENSE) 
       curr_ptr = get_ptr_vdense(s_table, chunk, chunk_addr, 2);
   }
-
   ptr_type = curr_ptr >> 14; 
 
   // Search L3
-  if (ptr_type == PTR_TYPE_NH) 
+  if (ptr_type == PTR_TYPE_NH) { 
+    l2_found++;
     return s_table->next_hop_table[curr_ptr];
-  else { //ptr to lower chunk
+  } else { //ptr to lower chunk
     chunk = &(s_table->l3[curr_ptr & 0x3fff]);
     chunk_addr = dest_ip & 0x000000ff;
     if (ptr_type == PTR_TYPE_SPARSE) 
@@ -951,7 +963,7 @@ uint32_t lookup_small_table(uint32_t dest_ip, void *table) {
     else if (ptr_type == PTR_TYPE_VERYDENSE) 
       curr_ptr = get_ptr_vdense(s_table, chunk, chunk_addr, 3);
   }
-
+  l3_found++;
   return s_table->next_hop_table[curr_ptr];
 }
 
