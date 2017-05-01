@@ -17,15 +17,10 @@
 
 //TRIES
 //initial "1st pass" trie datastruct type for nodes of trie
-typedef struct prefix_len_below_t prefix_len_below_t;
-struct prefix_len_below_t { //linked list node for prefixes lengths below a particular trie node
-	uint32_t prefix_len;//prefix length below this trie node
-	prefix_len_below_t * next_prefix_len_below;
-};
 typedef struct trie_node_t trie_node_t;
 struct trie_node_t {
 	uint32_t n_prefix_below;//number of prefixes stored below this node
-	prefix_len_below_t * prefix_len_below;//linked list of prefixes lengths stored below this trie node
+	uint32_t prefix_len_below;//bit field of prefixes lengths stored below this trie node
 	uint32_t prefix;//this node's prefix
 	uint32_t prefixlen;//this node's prefix length
 	uint32_t mask;//example --> 0xFFFF8000 (prefixlen=17)
@@ -44,11 +39,6 @@ typedef enum bucket_type_t {
 	both_t, //prefix and marker
 	empty_t //empty - not really used since moving to array of pointers to buckets
 } bucket_type_t;
-typedef struct rope_t rope_t;
-struct rope_t {
-	uint32_t level;
-	rope_t * nxt_rope_node;
-};
 //individual bucket of hash table
 typedef struct bucket_t bucket_t;
 struct bucket_t {
@@ -60,7 +50,7 @@ struct bucket_t {
 	//forwarding info - only filled if bucket type is prefix or both
 	uint32_t nxt_hop_addr;	
 	//next search tree to use -- fill in when implementing ropes/mutated binary search
-	rope_t * new_rope;//new rope to use for search (hash success, but marker)
+	uint32_t new_rope;//new rope to use for search (hash success, but marker)
 };
 //HASH TABLES
 //per prefix-level struct
@@ -78,6 +68,11 @@ struct htable_t {
 	//actual hash table
 	bucket_t ** buckets;//ptr to array of buckets[num_entries]
 };
+typedef struct scalable_table_t scalable_table_t;
+struct scalable_table_t{
+	htable_t ** scalable_htables;
+	uint32_t init_rope;
+};
 	
 //****functions****
 
@@ -85,20 +80,20 @@ struct htable_t {
 //per paper's recommended rope based scalable table build procedure, first pass builds a conventional trie
 trie_node_t * build_trie_table(route_table_entry_t * table, int num_entries);//first pass of building ropes and array of hash tables
 trie_node_t * insert_trie_node(trie_node_t * trie, route_table_entry_t * table_entry, uint32_t curr_level);//build_trie_table helper functions
-prefix_len_below_t * insert_prefix_len_below(prefix_len_below_t * prefix_len_below, route_table_entry_t * table_entry,uint32_t * duplicate);
-void destroy_prefix_len_below(prefix_len_below_t * prefix_len_below);
+void insert_prefix_len_below(uint32_t * prefix_len_below, route_table_entry_t * table_entry,uint32_t * duplicate);
+uint32_t level_to_mask(uint32_t level);//prefix level to bit field mask
 void destroy_trie_table(trie_node_t * trie);
 //transform trie to scalable table -- trie output fxs
 
 //Scalable table functions
 //per paper's recommended rope-based scalable table build procedure,
 //second pass to build ropes and hash tables, using conventional trie from first pass
-htable_t ** build_scalable_table(trie_node_t * trie, int num_entries);
+scalable_table_t * build_scalable_table(trie_node_t * trie, int num_entries);
 htable_t ** init_scalable_htables(uint32_t num_levels);//initializes array of hash tables,32 levels for IPv4, BEWARE
-void destroy_scalable_table(htable_t ** scalable_htables);
+void destroy_scalable_table(scalable_table_t * scalable_table);
+uint32_t prefix_len_below_to_rope(uint32_t prefix_len_below, uint32_t max_depth);
 //ropes guide level search for scalable tables
-void destroy_rope(rope_t * rope);
-void trie_level_read_scalable_insert(trie_node_t *, uint32_t prefixlevel, htable_t ** scalable_htables);//walk a trie level, insert into scalable t
+void trie_level_read_scalable_insert(trie_node_t *, uint32_t prefixlevel, htable_t ** scalable_htables, uint32_t max_depth);//walk a trie level, insert into scalable t
 
 //Custom hash table functions
 //custom/tightly integrated to scalable tables
@@ -107,7 +102,7 @@ htable_t * htable_create (uint32_t prefix_level);
 void htable_delete(htable_t * htable);
 void htable_delete_llist(bucket_t * bucket);//delete collision resolution llist at an index in bucket ptr array
 //prefix must match format for corresponding prefix level
-void htable_insert(htable_t * htable, bucket_type_t btype, uint32_t prefix, uint32_t bmp, uint32_t nxt_hop_addr, rope_t * rope);//prefix must be masked according to level already
+void htable_insert(htable_t * htable, bucket_type_t btype, uint32_t prefix, uint32_t bmp, uint32_t nxt_hop_addr, uint32_t rope);//prefix must be masked according to level already
 bucket_t * htable_insert_llist(bucket_t * bucket_ll, bucket_t * n_bucket, htable_t * htable);//linked list insert for collision resolution0
 //key is prefix, masked to length of corresponding prefix level
 //returns index into hast table
