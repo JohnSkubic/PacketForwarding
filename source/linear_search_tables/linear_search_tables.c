@@ -52,8 +52,6 @@ int main (int argc, char *argv[]) {
   /* Test Routing Table implementation */
 
   // build routing table structure from table
-  mergesort(table, num_entries, IP_ADDR);
-  mergesort(table, num_entries, MASK_LEN);
   linear_table_t l_table;
   l_table.size = num_entries;
   l_table.table = table;
@@ -61,7 +59,7 @@ int main (int argc, char *argv[]) {
   printf("Linear Table Size: %ld Bytes", sizeof(linear_table_t*) + (num_entries * (sizeof(uint32_t) *2)));
 
   // Run test (second argument is function pointer)
-  test_routing_table(trace, num_tests, (void*)&l_table, lookup_small_table);
+  test_routing_table(trace, num_tests, (void*)(&l_table), lookup_small_table);
 
   /* Free Resources */
   return EXIT_SUCCESS;
@@ -73,6 +71,7 @@ uint32_t lookup_small_table(uint32_t dest_ip, void *table) {
   route_table_entry_t rte;
   int i;
   int masks[32];
+  uint32_t hop_default, next_hop;
 
   masks[0] = 0x80000000;
   for(i = 1; i < 32; i++) {
@@ -81,12 +80,20 @@ uint32_t lookup_small_table(uint32_t dest_ip, void *table) {
 
   l_table = (linear_table_t *)table;
 
+  next_hop = -1;
   for (i = 0; i < l_table->size; i++) {
     rte = l_table->table[i];
-    if ((rte.dest_addr.address & masks[rte.dest_addr.mask-1]) == (dest_ip & masks[rte.dest_addr.mask-1]))
-      return rte.next_hop_addr;
+    if (rte.dest_addr.mask == 0) 
+      hop_default = rte.next_hop_addr;
+    else if (rte.dest_addr.address == (dest_ip & masks[rte.dest_addr.mask-1])) {
+      next_hop = rte.next_hop_addr;
+      break;
+    }
   }
 
-  return -1; 
+  if (next_hop == -1)
+    next_hop = hop_default;
+
+  return next_hop; 
 }
 
