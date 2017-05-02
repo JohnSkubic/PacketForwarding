@@ -57,7 +57,8 @@ int main (int argc, char *argv[]) {
   // build routing table structure from table
   // 1st pass -- trie
   trie_node_t * trie;
-  if((trie = build_trie_table(table, num_entries)) == NULL) {
+  int default_entry_nxt_hop;
+  if((trie = build_trie_table(table, num_entries, &default_entry_nxt_hop)) == NULL) {
     printf("Error: Could not build trie\n");
     return EXIT_FAILURE;
   }
@@ -68,12 +69,13 @@ int main (int argc, char *argv[]) {
     printf("Error: Could not build scalable table\n");
     return EXIT_FAILURE;
   }
+  scalable_table->default_entry_nxt_hop = default_entry_nxt_hop;
   //no longer need "1st pass trie" after scalable table is built
   destroy_trie_table(trie);
 
   // Run test (fourth argument is function pointer to lookup function)
   //*****printf("Testing scalable tables\n");
-  //test_routing_table(trace, num_tests, (void*)*****s_table, *****lookup_small_table);
+  test_routing_table(trace, num_tests, (void*) scalable_table, lookup_scalable_table);
 
   /* Free Resources */
   destroy_routing_table(table);
@@ -143,6 +145,8 @@ scalable_table_t * build_scalable_table(trie_node_t * trie, int num_entries){//c
 		if(testbucket) printf("prefix found: %x level: %d type: %d bmp: %x nxt_hop: %x rope: %x\n", testbucket->prefix, (i+1), (uint32_t)testbucket->bucket_type,testbucket->bmp,testbucket->nxt_hop_addr,testbucket->new_rope);//not null
 		testbucket = htable_search(scalable_table->scalable_htables[i],(0xcccc1800));
 		if(testbucket) printf("prefix found: %x level: %d type: %d bmp: %x nxt_hop: %x rope: %x\n", testbucket->prefix, (i+1), (uint32_t)testbucket->bucket_type,testbucket->bmp,testbucket->nxt_hop_addr,testbucket->new_rope);//not null
+		testbucket = htable_search(scalable_table->scalable_htables[i],(0xFFFFFFFF));
+		if(testbucket) printf("prefix found: %x level: %d type: %d bmp: %x nxt_hop: %x rope: %x\n", testbucket->prefix, (i+1), (uint32_t)testbucket->bucket_type,testbucket->bmp,testbucket->nxt_hop_addr,testbucket->new_rope);//not null
 	}*/
 	// **** END SCALABLE INSERT TESTING ****
 	
@@ -206,7 +210,64 @@ uint32_t prefix_len_below_to_rope(uint32_t prefix_len_below, uint32_t max_depth)
 	return prefix_len_below;
 }
 
+uint32_t lookup_scalable_table ( uint32_t dest_ip, void *table ){
+	scalable_table_t * scalable_table;
+	htable_t ** scalable_htables;
+	uint32_t curr_rope;
+	//uint32_t bmp;
+	uint32_t nxt_hop_addr;
+	//uint32_t tdest_ip;//temp/working dest_ip if have to extract first bits (htable_search) does this
+	uint32_t i;//level searching
+	bucket_t * bucket;
 
+	//init
+	scalable_table = (scalable_table_t *) table;
+	scalable_htables = scalable_table->scalable_htables;
+	curr_rope = scalable_table->init_rope;
+	//bmp = 0x00000000;
+	nxt_hop_addr = scalable_table->default_entry_nxt_hop;//if nothing found this is the nxt hop
+	bucket = NULL;
+
+	//scalable table search
+	while(curr_rope){//rope has something to search
+		//pull first curr_rope and store it in i
+		i = nxt_search_level(&curr_rope);
+
+		//extract first "level" bits of dest_ip
+		//built into search function -- uses precomputed mask (more efficient)
+		//tdest_ip = ((i==32)?(0xFFFFFFFF):(~(0xFFFFFFFF >> i))) & dest_ip;//if not build into search
+
+		//search htable of i for (t)dest_ip
+		bucket = htable_search(scalable_htables[i-1],dest_ip);
+		if(bucket != NULL){//hit in htable
+			//bmp = bucket->bmp; not needed in this implementation
+			//best bmp and associated nxt_hop so far
+			nxt_hop_addr = bucket->nxt_hop_addr;//what we really care about
+			//get new rope, if there is one, else end of search
+			curr_rope = bucket->new_rope;
+		}
+	}
+
+	//return next hop
+	return nxt_hop_addr;
+}
+
+uint32_t nxt_search_level(uint32_t * rope){
+	//strip leading zero off, return its position as a level (i+1)
+	uint32_t i,mask;
+	for(i=32;i>0;i--){
+		mask = level_to_mask(i);
+		if(*rope & mask){//if something, then add discovered level to average
+			//erase from rope for next iteration (so the next level to be searched can be found)
+			*rope &= ~(mask);//
+			//i is MSB level
+			return i;
+		}
+	}
+	//never used unless no levels found
+	printf("ERROR: no nxt_search_level\n");
+	return 0;
+}
 
 // ********** END SCALABLE FUNCTIONS **********
 
@@ -341,12 +402,18 @@ void htable_delete_llist(bucket_t * bucket_ll){
 
 // ********** BEGIN TRIE FUNCTIONS **********
 
-trie_node_t * build_trie_table(route_table_entry_t * table, int num_entries){
+trie_node_t * build_trie_table(route_table_entry_t * table, int num_entries, int * default_entry_nxt_hop){
 	uint32_t i;
 	trie_node_t * trie;
 	trie = NULL;
 
 	for(i=0;i<num_entries;i++){
+		if(table[i].dest_addr.address==0){
+			//printf("FOUND DEFAULT ENTRY: %x\n", table[i].next_hop_addr);
+			*default_entry_nxt_hop = table[i].next_hop_addr;
+			continue;//no need to try to insert default
+			//insert_trie_node can handle/won't fail, but also won't insert as there is no level for length 0
+		}
 		trie = insert_trie_node(trie,&table[i],0);
 	}
 
@@ -566,9 +633,11 @@ void trie_level_read_scalable_insert(trie_node_t * trie, uint32_t prefixlevel, h
 						bucket = htable_search(scalable_htables[prefixlevel-2],trie->prefix);//htable search previous layer, know that a marker or prefix will be there for me, b/c low to high prefix length insertion order;
 						if(bucket){
 							bmp = bucket->bmp;
-						} else {
-							printf("FATAL ERROR NO BMP IN PREVIOUS LEVEL\n");
-						}
+							//so search fx can simply save as it goes
+							nxt_hop_addr = bucket->nxt_hop_addr;
+						} /*else { //no longer a fatal error
+							//printf("FATAL ERROR NO BMP IN PREVIOUS LEVEL\n");
+						}*/
 					}
 				}
 				//real w/ possibly better matches below (both_t) -- bmp is my prefix (b/c i'm a real prefix)
@@ -577,13 +646,20 @@ void trie_level_read_scalable_insert(trie_node_t * trie, uint32_t prefixlevel, h
 					bmp = trie->prefix;
 					nxt_hop_addr = trie->nxt_hop_addr;
 				}
-			//need rope
+			//need rope -- max depth limits rope from pointing outside scope of subbinary tree we're in
 			rope = prefix_len_below_to_rope(trie->prefix_len_below, max_depth);// not deriving max depth because cheaper to calc and pass in once, than calc for every entry in trie (ex 10k)
+
+			//don't insert pure marker, if it points to something outside scope of binary tree currently in
+			//known by rope not having anything in it, because prefix_len_below_to_rope filtered out pointers to levels higher than current subbintree scope
+			if((bucket_type == marker_t) && (rope == 0x00000000)){
+				return;
+			}
 		}
 		//real prefix w/ NO possible better match (prefix_t)
 		else{
 			bucket_type = prefix_t;
-			//bmp isn't needed
+			//bmp is myself
+			bmp = trie->prefix;
 			nxt_hop_addr = trie->nxt_hop_addr;
 			//rope isn't needed
 		}

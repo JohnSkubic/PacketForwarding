@@ -72,13 +72,14 @@ typedef struct scalable_table_t scalable_table_t;
 struct scalable_table_t{
 	htable_t ** scalable_htables;
 	uint32_t init_rope;
+	uint32_t default_entry_nxt_hop;
 };
 	
 //****functions****
 
 //Trie functions
 //per paper's recommended rope based scalable table build procedure, first pass builds a conventional trie
-trie_node_t * build_trie_table(route_table_entry_t * table, int num_entries);//first pass of building ropes and array of hash tables
+trie_node_t * build_trie_table(route_table_entry_t * table, int num_entries, int * default_entry_nxt_hop);//first pass of building ropes and array of hash tables
 trie_node_t * insert_trie_node(trie_node_t * trie, route_table_entry_t * table_entry, uint32_t curr_level);//build_trie_table helper functions
 void insert_prefix_len_below(uint32_t * prefix_len_below, route_table_entry_t * table_entry,uint32_t * duplicate);
 uint32_t level_to_mask(uint32_t level);//prefix level to bit field mask
@@ -95,9 +96,10 @@ void destroy_scalable_table(scalable_table_t * scalable_table);
 //ropes guide level search for scalable tables
 uint32_t prefix_len_below_to_rope(uint32_t prefix_len_below, uint32_t max_depth);
 void trie_level_read_scalable_insert(trie_node_t *, uint32_t prefixlevel, htable_t ** scalable_htables, uint32_t max_depth);//walk a trie level, insert into scalable t
+uint32_t nxt_search_level(uint32_t * rope);
 
 //pièce de résistance
-//uint32_t lookup_scalable_table(uint32_t dest_ip, void *table);
+uint32_t lookup_scalable_table(uint32_t dest_ip, void *table);
 
 //Custom hash table functions
 //custom/tightly integrated to scalable tables
