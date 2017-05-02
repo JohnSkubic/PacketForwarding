@@ -91,9 +91,13 @@ void destroy_trie_table(trie_node_t * trie);
 scalable_table_t * build_scalable_table(trie_node_t * trie, int num_entries);
 htable_t ** init_scalable_htables(uint32_t num_levels);//initializes array of hash tables,32 levels for IPv4, BEWARE
 void destroy_scalable_table(scalable_table_t * scalable_table);
-uint32_t prefix_len_below_to_rope(uint32_t prefix_len_below, uint32_t max_depth);
+
 //ropes guide level search for scalable tables
+uint32_t prefix_len_below_to_rope(uint32_t prefix_len_below, uint32_t max_depth);
 void trie_level_read_scalable_insert(trie_node_t *, uint32_t prefixlevel, htable_t ** scalable_htables, uint32_t max_depth);//walk a trie level, insert into scalable t
+
+//pièce de résistance
+//uint32_t lookup_scalable_table(uint32_t dest_ip, void *table);
 
 //Custom hash table functions
 //custom/tightly integrated to scalable tables
