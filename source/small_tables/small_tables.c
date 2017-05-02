@@ -53,6 +53,7 @@ int main (int argc, char *argv[]) {
 
   //Sort Routing Table (Mergesort)
   //printf("Building gold model\n");
+  mergesort(table, num_entries, IP_ADDR);
   mergesort(table, num_entries, MASK_LEN);
   //printf("Gold model sanity check: ");
   for (i=0; i < num_entries-1; i++) {
