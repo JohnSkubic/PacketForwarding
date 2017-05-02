@@ -63,7 +63,7 @@ int main (int argc, char *argv[]) {
   }
 
   // 2nd pass -- scalable table = ropes and hash tables
-  htable_t ** scalable_table = NULL;
+  scalable_table_t * scalable_table = NULL;
   if((scalable_table = build_scalable_table(trie, num_entries)) == NULL) {
     printf("Error: Could not build scalable table\n");
     return EXIT_FAILURE;
@@ -85,20 +85,52 @@ int main (int argc, char *argv[]) {
 
 // ********** BEGIN SCALABLE FUNCTIONS **********
 
-htable_t ** build_scalable_table(trie_node_t * trie, int num_entries){//convert trie into scalable table (2nd pass)
-	htable_t ** scalable_htables;
-	//rope_t * initial_rope;
+scalable_table_t * build_scalable_table(trie_node_t * trie, int num_entries){//convert trie into scalable table (2nd pass)
+	scalable_table_t * scalable_table;
+	scalable_table = malloc(sizeof(scalable_table_t *));
+	scalable_table->init_rope = 0x0000808B;//level 16,8,4,2,1 search order
 	uint32_t i;
 
 	//create array of hashtables
-	scalable_htables = init_scalable_htables((uint32_t)32);//init array of hash table pointers, IPv4 w/ notions to expandability to IPv6
+	scalable_table->scalable_htables = init_scalable_htables((uint32_t)32);//init array of hash table pointers, IPv4 w/ notions to expandability to IPv6
 
 	//walk trie, insert into scalable table
-	for(i=1;i<=32;i++){
+	//note: init_rope 16,8,4,2,1
+	//Level 1
+	printf("LEVEL: %d\n", 1);
+	scalable_table->scalable_htables[0]=htable_create(1);
+	trie_level_read_scalable_insert(trie,1,scalable_table->scalable_htables,1);
+	//Level 2-3
+	for(i=2;i<=3;i++){
 		printf("LEVEL: %d\n", i);
-		scalable_htables[i-1]=htable_create(i);//levels are 1 indexed, array of htables is 0 indexed (1 to 32 length prefixes, 0 length is the default address)
-		//htable_insert(scalable_htables[i-1],marker_t, 0xcccc1800,5,4,NULL);
-		trie_level_read_scalable_insert(trie,i,scalable_htables);
+		//okay to init all htables, this is for a core router, will have 10k+ entries, all htables bound to have entries
+		scalable_table->scalable_htables[i-1]=htable_create(i);//levels are 1 indexed, array of htables is 0 indexed (1 to 32 length prefixes, 0 length is the default address)
+		//insert "i's" level of trie nodes into hashtables (scalable table)
+		trie_level_read_scalable_insert(trie,i,scalable_table->scalable_htables,3);//3 max depth for 2 (initrope)
+	}
+	//Level 4-7
+	for(i=4;i<=7;i++){
+		printf("LEVEL: %d\n", i);
+		//okay to init all htables, this is for a core router, will have 10k+ entries, all htables bound to have entries
+		scalable_table->scalable_htables[i-1]=htable_create(i);//levels are 1 indexed, array of htables is 0 indexed (1 to 32 length prefixes, 0 length is the default address)
+		//insert "i's" level of trie nodes into hashtables (scalable table)
+		trie_level_read_scalable_insert(trie,i,scalable_table->scalable_htables,7);//7 max depth for 4 (initrope)
+	}
+	//Level 8-15
+	for(i=8;i<=15;i++){
+		printf("LEVEL: %d\n", i);
+		//okay to init all htables, this is for a core router, will have 10k+ entries, all htables bound to have entries
+		scalable_table->scalable_htables[i-1]=htable_create(i);//levels are 1 indexed, array of htables is 0 indexed (1 to 32 length prefixes, 0 length is the default address)
+		//insert "i's" level of trie nodes into hashtables (scalable table)
+		trie_level_read_scalable_insert(trie,i,scalable_table->scalable_htables,15);//15 max depth for 8 (initrope)
+	}
+	//Level 16-32
+	for(i=16;i<=32;i++){
+		printf("LEVEL: %d\n", i);
+		//okay to init all htables, this is for a core router, will have 10k+ entries, all htables bound to have entries
+		scalable_table->scalable_htables[i-1]=htable_create(i);//levels are 1 indexed, array of htables is 0 indexed (1 to 32 length prefixes, 0 length is the default address)
+		//insert "i's" level of trie nodes into hashtables (scalable table)
+		trie_level_read_scalable_insert(trie,i,scalable_table->scalable_htables,32);//32 max depth for 16 (initrope)
 	}
 
 	// **** SCALABLE INSERT TESTING ****
@@ -110,16 +142,8 @@ htable_t ** build_scalable_table(trie_node_t * trie, int num_entries){//convert 
 		if(testbucket) printf("prefix found: %x level: %d type: %d\n", testbucket->prefix, (i+1),(uint32_t)testbucket->bucket_type);//not null
 	}*/
 	// **** END SCALABLE INSERT TESTING ****
-
-	//TODO
-	//figure out core dump, get correct print, DONE
-	//write a delete scalable tables or htables, or both one call other, to test deletions
-	//write overall scalable table data structure
-
-	//return value SHOULD BECOME THE YET TO BE CREATED OVERALL SCALABLE
-	//TABLE STRUCT WITH ROPES(at least the initial one, possibly array or
-	// ropes where id's are only thing stored in hash tables)
-	return scalable_htables;
+	
+	return scalable_table;
 }
 
 htable_t ** init_scalable_htables(uint32_t num_levels){
@@ -129,22 +153,47 @@ htable_t ** init_scalable_htables(uint32_t num_levels){
 	return scalable_htables;
 }
 
-void destroy_rope(rope_t * rope){
-	if(rope == NULL){return;}//done
-	destroy_rope(rope->nxt_rope_node);//walk llist
-	free(rope);//free this rope node
-	return;
-}
-
-void destroy_scalable_table(htable_t ** scalable_table){
+void destroy_scalable_table(scalable_table_t* scalable_table){
 	uint32_t i;
 
 	//destroy hashtables and contents
 	for(i=0;i<32;i++){
-		htable_delete(scalable_table[i]);
+		htable_delete(scalable_table->scalable_htables[i]);
 	}
 	//free array of hashtable pointers
+	free(scalable_table->scalable_htables);
 	free(scalable_table);
+}
+
+uint32_t prefix_len_below_to_rope(uint32_t prefix_len_below, uint32_t max_depth){//max depth will be 1,3,7,15,32
+	//erase all "prefix below me above max_depth"
+	uint32_t erase_mask;
+	erase_mask = ~((max_depth==32)?(0x00000000):(0xFFFFFFFF << max_depth));//ex. max depth =3 erase_mask = ~(FFFFFFFF << 3) = ~FFFFFFF8 = 00000007
+	prefix_len_below &= erase_mask;//prefix_len_below now only contains binary search appropriate nodes below it
+	//find median length to make right side of binary tree
+	uint32_t i,mask,lens_below,lens_in_rope;
+	lens_below = 0;
+	for(i=0;i<max_depth;i++){
+		mask = level_to_mask(i+1);
+		if(prefix_len_below & mask){//if something, then add discovered level to average
+			lens_below++;
+		}
+	}
+	lens_in_rope = lens_below/2;//right side of a bin tree
+	//find where the right side of the bin tree ends
+	uint32_t lens_found;
+	lens_found = 0;
+	for(i=0;lens_found < lens_in_rope;i++){//final i value will be where right side of bin tree (rope) begins
+		mask = level_to_mask(i+1);
+		if(prefix_len_below & mask){
+			lens_found++;
+		}
+	}
+	//erase left side of bin tree to make rope
+	erase_mask = ~(((i+1)==32)?(0x00000000):(0xFFFFFFFF << (i+1)));//left side erase mask
+	prefix_len_below &= erase_mask;
+	//now prefix_len_below is a rope which is the right side of a bin tree sub tree
+	return prefix_len_below;
 }
 
 // ********** END SCALABLE FUNCTIONS **********
@@ -205,7 +254,7 @@ uint32_t htable_hash(htable_t * htable, uint32_t key){//uses log2(num_buckets) M
 	return (key >> htable->shamt);//made possible by "pre"-calculation on htable creation
 }
 
-void htable_insert(htable_t * htable, bucket_type_t btype, uint32_t prefix, uint32_t bmp, uint32_t nxt_hop_addr, rope_t * rope){//remember to have already and-ed with mask provided in hash table struct
+void htable_insert(htable_t * htable, bucket_type_t btype, uint32_t prefix, uint32_t bmp, uint32_t nxt_hop_addr, uint32_t rope){//remember to have already and-ed with mask provided in hash table struct
 	//overwrites duplicates -- existing matching prefix entries
 	uint32_t ht_index;
 	ht_index = htable_hash(htable, prefix);
@@ -271,7 +320,6 @@ void htable_delete(htable_t * htable){
 }
 void htable_delete_llist(bucket_t * bucket_ll){
 	if(bucket_ll == NULL) { return; }// at end of list
-	destroy_rope(bucket_ll->new_rope);//free rope if exists
 	htable_delete_llist(bucket_ll->nxt_bucket);//walk llist
 	free(bucket_ll);//free this node
 	return;
@@ -302,7 +350,7 @@ trie_node_t * insert_trie_node(trie_node_t * trie, route_table_entry_t * table_e
 		//initialize
 		trie->real_prefix=0;//FALSE
 		trie->n_prefix_below = 0;
-		trie->prefix_len_below = NULL;
+		trie->prefix_len_below = 0x00000000;
 		trie->mask = (curr_level == 0) ? 0x00000000 : (0xFFFFFFFF << (32-curr_level));//need to be able to shift uint32_t by 32, C/x86 do not support 32 bit shift, only 0-31 bit shift
 		trie->prefix = (table_entry->dest_addr.address & trie->mask);
 		trie->prefixlen = curr_level;//level this node lives at
@@ -318,7 +366,7 @@ trie_node_t * insert_trie_node(trie_node_t * trie, route_table_entry_t * table_e
 		//increment number of prefix lengths stored below this trie node, if unique
 		uint32_t duplicate,goleftmask;
 		duplicate = 0;//FALSE
-		trie->prefix_len_below = insert_prefix_len_below(trie->prefix_len_below,table_entry,&duplicate);
+		insert_prefix_len_below(&trie->prefix_len_below,table_entry,&duplicate);
 		if(!duplicate){
 			trie->n_prefix_below++;
 		}
@@ -346,42 +394,124 @@ trie_node_t * insert_trie_node(trie_node_t * trie, route_table_entry_t * table_e
 	return trie;
 }
 
-prefix_len_below_t * insert_prefix_len_below(prefix_len_below_t * prefix_len_below, route_table_entry_t * table_entry,uint32_t * duplicate){
+void insert_prefix_len_below(uint32_t * prefix_len_below, route_table_entry_t * table_entry,uint32_t * duplicate){
 	//linked list insert of prefix lengths below trie node
 	
-
-	// < less than
-	//prefix len is not in list already and is smaller than all previous entries
-	if(prefix_len_below == NULL){
-		prefix_len_below = malloc(sizeof(prefix_len_below_t));
-		prefix_len_below->next_prefix_len_below = NULL;
-		prefix_len_below->prefix_len = table_entry->dest_addr.mask;//
-		return prefix_len_below;//done
+	uint32_t temp_prefix_len_below,mask;
+	mask = level_to_mask(table_entry->dest_addr.mask);
+	temp_prefix_len_below = (*prefix_len_below) & mask;//manipulate before overwriting value
+	
+	if(temp_prefix_len_below){//if there is something here, we are inserting a duplicate
+		*duplicate = 1;
 	}
+	//insert into bit field of prefix lengths below
+	*prefix_len_below |= mask;
+}
 
-	// = equal
-	//does not insert a duplicate prefix len below
-	if(prefix_len_below->prefix_len == table_entry->dest_addr.mask){
-		*duplicate = 1;//TRUE//signal to not increment counter on duplicate (n_prefix_below)
-		return prefix_len_below;// no need to go further down the list
+uint32_t level_to_mask(uint32_t level){
+	uint32_t mask;
+	switch(level){//decimal to bit field representation
+		case 1:
+			mask = 0x00000001;
+			break;
+		case 2:
+			mask = 0x00000002;
+			break;
+		case 3:
+			mask = 0x00000004;
+			break;
+		case 4:
+			mask = 0x00000008;
+			break;
+		case 5:
+			mask = 0x00000010;
+			break;
+		case 6:
+			mask = 0x00000020;
+			break;
+		case 7:
+			mask = 0x00000040;
+			break;
+		case 8:
+			mask = 0x00000080;
+			break;
+		case 9:
+			mask = 0x00000100;
+			break;
+		case 10:
+			mask = 0x00000200;
+			break;
+		case 11:
+			mask = 0x00000400;
+			break;
+		case 12:
+			mask = 0x00000800;
+			break;
+		case 13:
+			mask = 0x00001000;
+			break;
+		case 14:
+			mask = 0x00002000;
+			break;
+		case 15:
+			mask = 0x00004000;
+			break;
+		case 16:
+			mask = 0x00008000;
+			break;
+		case 17:
+			mask = 0x00010000;
+			break;
+		case 18:
+			mask = 0x00020000;
+			break;
+		case 19:
+			mask = 0x00040000;
+			break;
+		case 20:
+			mask = 0x00080000;
+			break;
+		case 21:
+			mask = 0x00100000;
+			break;
+		case 22:
+			mask = 0x00200000;
+			break;
+		case 23:
+			mask = 0x00400000;
+			break;
+		case 24:
+			mask = 0x00800000;
+			break;
+		case 25:
+			mask = 0x01000000;
+			break;
+		case 26:
+			mask = 0x02000000;
+			break;
+		case 27:
+			mask = 0x04000000;
+			break;
+		case 28:
+			mask = 0x08000000;
+			break;
+		case 29:
+			mask = 0x10000000;
+			break;
+		case 30:
+			mask = 0x20000000;
+			break;
+		case 31:
+			mask = 0x40000000;
+			break;
+		case 32:
+			mask = 0x80000000;
+			break;
+		default://zero or error (level greater than 32)
+			mask = 0x00000000;
+			break;
 	}
-
-	// > greater than current linked list node
-	// insert into the middle of list
-	if(table_entry->dest_addr.mask > prefix_len_below->prefix_len){
-		prefix_len_below_t * temp;
-		temp = malloc(sizeof(prefix_len_below_t));
-		temp->next_prefix_len_below = prefix_len_below;
-		temp->prefix_len = table_entry->dest_addr.mask;
-
-		return temp;//done
-	}
-
-	// walk down tree
-	// if here, prefix len to be inserted is smaller than current node of linked list
-	prefix_len_below->next_prefix_len_below = insert_prefix_len_below(prefix_len_below->next_prefix_len_below,table_entry,duplicate);
-
-	return prefix_len_below;
+	return mask;
 }
 
 void destroy_trie_table(trie_node_t * trie){
@@ -392,37 +522,71 @@ void destroy_trie_table(trie_node_t * trie){
 	destroy_trie_table(trie->left );
 	destroy_trie_table(trie->right);
 
-	destroy_prefix_len_below(trie->prefix_len_below);
 	free(trie);
 	return;
 }
 
-void destroy_prefix_len_below(prefix_len_below_t * prefix_len_below){
-	//destroy linked list of prefixes stored at each trie node
-	if(prefix_len_below == NULL){
-		return;//end of list
-	}
-	destroy_prefix_len_below(prefix_len_below->next_prefix_len_below);
-
-	free(prefix_len_below);
-	return;
-}
-
-//this part of the build algorithm is poorly described by the paper
-void trie_level_read_scalable_insert(trie_node_t * trie, uint32_t prefixlevel, htable_t ** scalable_htables){
+//this part of the build algorithm is very poorly described by the paper -- acknowledge wasteful storage of markers at non-visited levels, however ropes are faithful to algorithm, so are bmps
+void trie_level_read_scalable_insert(trie_node_t * trie, uint32_t prefixlevel, htable_t ** scalable_htables, uint32_t max_depth){
 	if(trie==NULL) return;
-	else if(trie->prefixlen == prefixlevel){//output this node, part of level reading on
-		//INSERT????? or calculate rope then insert at corresponding htable level?
-		//search first to see if it is both???? htablesearch?
-		// bucket_type_t btype, uint32_t prefix, uint32_t bmp, uint32_t nxt_hop_addr, rope_t * rope);
-		//change rope to a bit field?
-		htable_insert(scalable_htables[prefixlevel-1],((trie->real_prefix) ? prefix_t : marker_t), trie->prefix,5,4,NULL);
-		printf("prefix: %x, nb: %d, real: %d \n", trie->prefix, trie->n_prefix_below,trie->real_prefix);
-		return;//not interested in anything below level being read at(this one), don't further recursion
+	else if(trie->prefixlen == prefixlevel){//insert this node, part of level inserting on currently
+		// htable_insert arguments to assemble:
+		// bucket_type_t btype, uint32_t bmp, uint32_t nxt_hop_addr, uint32_t rope;
+		
+		//INITIALIZE
+		bucket_type_t bucket_type;
+		uint32_t bmp, nxt_hop_addr, rope;
+		bucket_type = empty_t;
+		bmp = 0;
+		nxt_hop_addr = 0;
+		rope = 0;	
+
+		//ASSEMBLE
+		//marker or real prefix with possibly better matches below (both_t), need a rope and bmp
+		//    marker_t               both_t
+		if( (!trie->real_prefix) || (trie->real_prefix & trie->n_prefix_below)){
+			//need bmp
+				//marker -- search up for one htables above for bmp (usually just the htable above my level)
+				if(!trie->real_prefix){
+					bucket_type = marker_t;
+					if(prefixlevel!=1){//one doesn't have any shorter best matching prefix (1 literally is the shortest to go)
+						bucket_t * bucket;
+						bucket = htable_search(scalable_htables[prefixlevel-2],trie->prefix);//htable search previous layer, know that a marker or prefix will be there for me, b/c low to high prefix length insertion order;
+						if(bucket){
+							bmp = bucket->bmp;
+						} else {
+							printf("FATAL ERROR NO BMP IN PREVIOUS LEVEL\n");
+						}
+					}
+				}
+				//real w/ possibly better matches below (both_t) -- bmp is my prefix (b/c i'm a real prefix)
+				else{
+					bucket_type = both_t;
+					bmp = trie->prefix;
+					nxt_hop_addr = trie->nxt_hop_addr;
+				}
+			//need rope
+			rope = prefix_len_below_to_rope(trie->prefix_len_below, max_depth);// not deriving max depth because cheaper to calc and pass in once, than calc for every entry in trie (ex 10k)
+		}
+		//real prefix w/ NO possible better match (prefix_t)
+		else{
+			bucket_type = prefix_t;
+			//bmp isn't needed
+			nxt_hop_addr = trie->nxt_hop_addr;
+			//rope isn't needed
+		}
+
+		//INSERT
+		htable_insert(scalable_htables[prefixlevel-1], bucket_type, trie->prefix, bmp, nxt_hop_addr, rope);
+		
+		//testing print
+		printf("prefix: %x, nb: %d, real: %d, lbelow: %x\n", trie->prefix, trie->n_prefix_below,trie->real_prefix, trie->prefix_len_below);
+		
+		return;//not interested in anything below level being read at(this one), no further recursion
 	}
 
-	trie_level_read_scalable_insert(trie->left , prefixlevel, scalable_htables);
-	trie_level_read_scalable_insert(trie->right, prefixlevel, scalable_htables);
+	trie_level_read_scalable_insert(trie->left , prefixlevel, scalable_htables, max_depth);
+	trie_level_read_scalable_insert(trie->right, prefixlevel, scalable_htables, max_depth);
 }
 
 // ********** END TRIE FUNCTIONS **********
