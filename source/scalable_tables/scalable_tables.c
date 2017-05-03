@@ -70,7 +70,6 @@ int main (int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
   scalable_table->default_entry_nxt_hop = default_entry_nxt_hop;
-  printf("DEFAULT ENTRY nxthop: %x\n", default_entry_nxt_hop);
   //no longer need "1st pass trie" after scalable table is built
   destroy_trie_table(trie);
 
@@ -140,7 +139,7 @@ scalable_table_t * build_scalable_table(trie_node_t * trie, int num_entries){//c
 	
 	bucket_t * testbucket;
 	for(i=0;i<32;i++){
-		testbucket = htable_search(scalable_table->scalable_htables[i],(0x5aa30000));
+		testbucket = htable_search(scalable_table->scalable_htables[i],(0x00000001));//a833));
 		if(testbucket) printf("prefix found: %8x level: %2d type: %1d bmp: %8x nxt_hop: %4d rope: %8x lmask: %x\n", testbucket->prefix, (i+1), (uint32_t)testbucket->bucket_type,testbucket->bmp,testbucket->nxt_hop_addr,testbucket->new_rope,scalable_table->scalable_htables[i]->lmask);//not null
 	}
 	// **** END SCALABLE INSERT TESTING ****
@@ -298,7 +297,7 @@ htable_t * htable_create(uint32_t prefix_level){
 	htable->num_buckets = num_buckets;
 	htable->shamt = shamt;//used by hash function
 	htable->mask = (shamt_mask == 0) ? 0x00000000 : (0xFFFFFFFF << (32-shamt_mask));//used for inserting at correct prefix
-	htable->lmask = (level_mask == 0) ? 0x00000000 : (orig_num_buckets==0x80000000) ? (0xFFFFFFFF) : (0xFFFFFFFF << (32-level_mask));//used for inserting/searching prefix
+	htable->lmask = (level_mask == 0) ? 0x00000000 : (prefix_level==32) ? (0xFFFFFFFF) : (0xFFFFFFFF << (32-level_mask));//used for inserting/searching prefix
 	htable->num_entries = 0;
 	htable->num_collisions = 0;
 	htable->buckets = malloc(num_buckets*sizeof(bucket_t*));//moved to array of pointers to buckets, ptrs only populated if index used
@@ -407,8 +406,8 @@ trie_node_t * build_trie_table(route_table_entry_t * table, int num_entries, int
 	trie = NULL;
 
 	for(i=0;i<num_entries;i++){
-		if(table[i].dest_addr.address==0){
-			//printf("FOUND DEFAULT ENTRY: %x\n", table[i].next_hop_addr);
+		if(table[i].dest_addr.address==0 && table[i].dest_addr.mask==0){
+			printf("FOUND DEFAULT ENTRY: %x\n", table[i].next_hop_addr);
 			*default_entry_nxt_hop = table[i].next_hop_addr;
 			continue;//no need to try to insert default
 			//insert_trie_node can handle/won't fail, but also won't insert as there is no level for length 0
