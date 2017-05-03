@@ -333,6 +333,7 @@ void htable_insert(htable_t * htable, bucket_type_t btype, uint32_t prefix, uint
 	//malloc and assemble new bucket_t
 	bucket_t * n_bucket;
 	n_bucket = malloc(sizeof(bucket_t));
+	n_bucket->nxt_bucket = NULL;
 	n_bucket->bucket_type = btype;
 	n_bucket->prefix = prefix & htable->lmask;
 	n_bucket->bmp = bmp;
