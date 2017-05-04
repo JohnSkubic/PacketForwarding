@@ -80,7 +80,7 @@ struct scalable_table_t{
 //Trie functions
 //per paper's recommended rope based scalable table build procedure, first pass builds a conventional trie
 trie_node_t * build_trie_table(route_table_entry_t * table, int num_entries, int * default_entry_nxt_hop);//first pass of building ropes and array of hash tables
-trie_node_t * insert_trie_node(trie_node_t * trie, route_table_entry_t * table_entry, uint32_t curr_level);//build_trie_table helper functions
+trie_node_t * insert_trie_node(trie_node_t * trie, route_table_entry_t * table_entry, uint32_t curr_level,uint32_t bmp_nxthop);//build_trie_table helper functions
 void insert_prefix_len_below(uint32_t * prefix_len_below, route_table_entry_t * table_entry,uint32_t * duplicate);
 uint32_t level_to_mask(uint32_t level);//prefix level to bit field mask
 void destroy_trie_table(trie_node_t * trie);
