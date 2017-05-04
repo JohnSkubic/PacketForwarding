@@ -134,15 +134,6 @@ scalable_table_t * build_scalable_table(trie_node_t * trie, int num_entries){//c
 		//insert "i's" level of trie nodes into hashtables (scalable table)
 		trie_level_read_scalable_insert(trie,i,scalable_table->scalable_htables,32,0);//32 max depth for 16 (initrope)
 	}
-
-	// **** SCALABLE INSERT TESTING ****
-	
-	bucket_t * testbucket;
-	for(i=0;i<32;i++){
-		testbucket = htable_search(scalable_table->scalable_htables[i],(0x18a0303f)&scalable_table->scalable_htables[i]->lmask);//a833));
-		if(testbucket) printf("prefix found: %8x level: %2d type: %1d nxt_hop: %4d rope: %8x lmask: %x\n", testbucket->prefix, (i+1), (uint32_t)testbucket->bucket_type,testbucket->nxt_hop_addr,testbucket->new_rope,scalable_table->scalable_htables[i]->lmask);//not null
-	}
-	// **** END SCALABLE INSERT TESTING ****
 	
 	return scalable_table;
 }
@@ -209,7 +200,7 @@ uint32_t lookup_scalable_table ( uint32_t dest_ip, void *table ){
 	htable_t ** scalable_htables;
 	uint32_t curr_rope;
 	uint32_t nxt_hop_addr;
-	uint32_t i;//level searching
+	uint32_t i,mask;//level searching
 	bucket_t * bucket;
 
 	//init
@@ -222,14 +213,131 @@ uint32_t lookup_scalable_table ( uint32_t dest_ip, void *table ){
 	//scalable table search
 	while(curr_rope){//rope has something to search
 		//pull first curr_rope and store it in i
-		i = nxt_search_level(&curr_rope);
+		//i = nxt_search_level(&curr_rope);
+		
+		//speed -- don't jump to function just write it in (through testing saw 500k jump in lookups / S ~4000k to 4500k)
+		for(i=32;i>0;i--){
+			//mask = level_to_mask(i);
+			//speed -- don't jump to function (4500k lookups up to 8000k lookups/S) MAJOR
+			switch(i){//decimal to bit field representation
+				case 1:
+					mask = 0x00000001;
+					break;
+				case 2:
+					mask = 0x00000002;
+					break;
+				case 3:
+					mask = 0x00000004;
+					break;
+				case 4:
+					mask = 0x00000008;
+					break;
+				case 5:
+					mask = 0x00000010;
+					break;
+				case 6:
+					mask = 0x00000020;
+					break;
+				case 7:
+					mask = 0x00000040;
+					break;
+				case 8:
+					mask = 0x00000080;
+					break;
+				case 9:
+					mask = 0x00000100;
+					break;
+				case 10:
+					mask = 0x00000200;
+					break;
+				case 11:
+					mask = 0x00000400;
+					break;
+				case 12:
+					mask = 0x00000800;
+					break;
+				case 13:
+					mask = 0x00001000;
+					break;
+				case 14:
+					mask = 0x00002000;
+					break;
+				case 15:
+					mask = 0x00004000;
+					break;
+				case 16:
+					mask = 0x00008000;
+					break;
+				case 17:
+					mask = 0x00010000;
+					break;
+				case 18:
+					mask = 0x00020000;
+					break;
+				case 19:
+					mask = 0x00040000;
+					break;
+				case 20:
+					mask = 0x00080000;
+					break;
+				case 21:
+					mask = 0x00100000;
+					break;
+				case 22:
+					mask = 0x00200000;
+					break;
+				case 23:
+					mask = 0x00400000;
+					break;
+				case 24:
+					mask = 0x00800000;
+					break;
+				case 25:
+					mask = 0x01000000;
+					break;
+				case 26:
+					mask = 0x02000000;
+					break;
+				case 27:
+					mask = 0x04000000;
+					break;
+				case 28:
+					mask = 0x08000000;
+					break;
+				case 29:
+					mask = 0x10000000;
+					break;
+				case 30:
+					mask = 0x20000000;
+					break;
+				case 31:
+					mask = 0x40000000;
+					break;
+				case 32:
+					mask = 0x80000000;
+					break;
+				default://zero or error (level greater than 32)
+					mask = 0x00000000;
+					break;
+			}
+			if(curr_rope & mask){//if something, then add discovered level to average
+				//erase from rope for next iteration (so the next level to be searched can be found)
+				curr_rope &= ~(mask);//
+				//i is MSB level
+				break;
+			}
+		}
+	
 
 		//extract first "level" bits of dest_ip
 		//built into search function -- uses precomputed mask (more efficient)
 		//tdest_ip = ((i==32)?(0xFFFFFFFF):(~(0xFFFFFFFF >> i))) & dest_ip;//if not build into search
 
 		//search htable of i for (t)dest_ip
-		bucket = htable_search(scalable_htables[i-1],dest_ip);
+		//bucket = htable_search(scalable_htables[i-1],dest_ip);
+		//speed -- eliminate search and hash jumps (8000k lookups up to 8700 lookups / S) SIGNIFICANT
+		bucket = htable_search_llist(scalable_htables[i-1]->buckets[dest_ip >> scalable_htables[i-1]->shamt],(dest_ip& scalable_htables[i-1]->lmask));
+
 		if(bucket != NULL){//hit in htable
 			//best bmp and associated nxt_hop so far
 			nxt_hop_addr = bucket->nxt_hop_addr;//what we really care about
@@ -347,6 +455,7 @@ void htable_insert(htable_t * htable, bucket_type_t btype, uint32_t prefix, uint
 	//resolve collisions, should they exist
 	htable->buckets[ht_index] = htable_insert_llist(htable->buckets[ht_index], n_bucket, htable);
 }
+
 bucket_t * htable_insert_llist(bucket_t * bucket_ll, bucket_t * n_bucket, htable_t * htable){
 	//insert at end of list, order doesn't matter as lookups are random :(
 
@@ -665,17 +774,9 @@ void trie_level_read_scalable_insert(trie_node_t * trie, uint32_t prefixlevel, h
 		//INSERT
 		htable_insert(scalable_htables[prefixlevel-1], bucket_type, trie->prefix, nxt_hop_addr, rope);
 
-		//testing print
-		//if(prefixlevel==28){
-		if(trie->prefix == (0xd22c6206 & scalable_htables[prefixlevel-1]->lmask)){
-						printf("TRLSIprefix: %8x, len: %2d nb: %3d, real: %1d, lbelow: %8x level: %2d  nhop: %4d \n", trie->prefix, prefixlevel, trie->n_prefix_below,trie->real_prefix, trie->prefix_len_below, prefixlevel,nxt_hop_addr);
-		}
-		/*if(trie->prefix == 0){
-			printf("prefix: %8x, nb: %3d, real: %1d, lbelow: %8x level: %2d  nhop: %4d\n", trie->prefix, trie->n_prefix_below,trie->real_prefix, trie->prefix_len_below, prefixlevel,trie->nxt_hop_addr);
-		}*/
 		return;//not interested in anything below level being read at(this one), no further recursion
 	}
-
+	//testing print        misbehaving address
 	/*if(trie->prefix == (0x68d5fabf & scalable_htables[prefixlevel-1]->lmask)){
 		printf("TRLSIprefix: %8x, len: %2d nb: %3d, real: %1d, lbelow: %8x level: %2d  nhop: %4d \n", trie->prefix, prefixlevel, trie->n_prefix_below,trie->real_prefix, trie->prefix_len_below, prefixlevel,trie->nxt_hop_addr);
 	}*/
