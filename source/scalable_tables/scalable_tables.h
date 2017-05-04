@@ -45,9 +45,8 @@ struct bucket_t {
 	bucket_t * nxt_bucket;//linked list for collision resolution
 	bucket_type_t bucket_type;//prefix, marker, or both, or empty
 	uint32_t prefix;//field searched against for match
-	//only filled if bucket type is marker
-	uint32_t bmp;//best matching prefix -- set by pre-computation, alleviates backtracking
 	//forwarding info - only filled if bucket type is prefix or both
+	//else it is the nxt hop of the previous best matching prefix
 	uint32_t nxt_hop_addr;	
 	//next search tree to use -- fill in when implementing ropes/mutated binary search
 	uint32_t new_rope;//new rope to use for search (hash success, but marker)
@@ -95,7 +94,7 @@ void destroy_scalable_table(scalable_table_t * scalable_table);
 
 //ropes guide level search for scalable tables
 uint32_t prefix_len_below_to_rope(uint32_t prefix_len_below, uint32_t max_depth);
-void trie_level_read_scalable_insert(trie_node_t *, uint32_t prefixlevel, htable_t ** scalable_htables, uint32_t max_depth);//walk a trie level, insert into scalable t
+void trie_level_read_scalable_insert(trie_node_t *, uint32_t prefixlevel, htable_t ** scalable_htables, uint32_t max_depth, uint32_t bmp_nxthop);//walk a trie level, insert into scalable t
 uint32_t nxt_search_level(uint32_t * rope);
 
 //pièce de résistance
@@ -108,7 +107,7 @@ htable_t * htable_create (uint32_t prefix_level);
 void htable_delete(htable_t * htable);
 void htable_delete_llist(bucket_t * bucket);//delete collision resolution llist at an index in bucket ptr array
 //prefix must match format for corresponding prefix level
-void htable_insert(htable_t * htable, bucket_type_t btype, uint32_t prefix, uint32_t bmp, uint32_t nxt_hop_addr, uint32_t rope);//prefix must be masked according to level already
+void htable_insert(htable_t * htable, bucket_type_t btype, uint32_t prefix, uint32_t nxt_hop_addr, uint32_t rope);//prefix must be masked according to level already
 bucket_t * htable_insert_llist(bucket_t * bucket_ll, bucket_t * n_bucket, htable_t * htable);//linked list insert for collision resolution0
 //key is prefix, masked to length of corresponding prefix level
 //returns index into hast table
