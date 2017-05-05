@@ -11,6 +11,9 @@
 #include <string.h>
 #include "scalable_tables.h"
 
+int size_scalable_table;//size in bytes
+
+
 int main (int argc, char *argv[]) {
   route_table_entry_t *table;
   route_table_entry_t *trace;
@@ -65,16 +68,18 @@ int main (int argc, char *argv[]) {
 
   // 2nd pass -- scalable table = ropes and hash tables
   scalable_table_t * scalable_table = NULL;
+  size_scalable_table = 0;//size accounting
   if((scalable_table = build_scalable_table(trie, num_entries)) == NULL) {
     printf("Error: Could not build scalable table\n");
     return EXIT_FAILURE;
   }
   scalable_table->default_entry_nxt_hop = default_entry_nxt_hop;
+  printf("Size of Scalable Table : %d bytes\n", size_scalable_table);//size accounting and report
   //no longer need "1st pass trie" after scalable table is built
   destroy_trie_table(trie);
 
   // Run test (fourth argument is function pointer to lookup function)
-  //*****printf("Testing scalable tables\n");
+  //printf("Testing scalable tables\n");
   test_routing_table(trace, num_tests, (void*) scalable_table, lookup_scalable_table);
 
   /* Free Resources */
@@ -90,6 +95,7 @@ int main (int argc, char *argv[]) {
 scalable_table_t * build_scalable_table(trie_node_t * trie, int num_entries){//convert trie into scalable table (2nd pass)
 	scalable_table_t * scalable_table;
 	scalable_table = malloc(sizeof(scalable_table_t *));
+	size_scalable_table += sizeof(scalable_table_t *);//size accounting
 	scalable_table->init_rope = 0x0000808B;//level 16,8,4,2,1 search order
 	uint32_t i;
 
@@ -141,6 +147,7 @@ scalable_table_t * build_scalable_table(trie_node_t * trie, int num_entries){//c
 htable_t ** init_scalable_htables(uint32_t num_levels){
 	htable_t ** scalable_htables;
 	scalable_htables = malloc(num_levels*sizeof(htable_t *));
+	size_scalable_table += num_levels*sizeof(htable_t *);//size accounting
 
 	return scalable_htables;
 }
@@ -406,6 +413,7 @@ htable_t * htable_create(uint32_t prefix_level){
 
 	//initialize hash table
 	htable = malloc(sizeof(htable_t));
+	size_scalable_table += sizeof(htable_t);//size accounting
 	htable->level = prefix_level;
 	htable->num_buckets = num_buckets;
 	htable->shamt = shamt;//used by hash function
@@ -414,6 +422,7 @@ htable_t * htable_create(uint32_t prefix_level){
 	htable->num_entries = 0;
 	htable->num_collisions = 0;
 	htable->buckets = malloc(num_buckets*sizeof(bucket_t*));//moved to array of pointers to buckets, ptrs only populated if index used
+	size_scalable_table += num_buckets*sizeof(bucket_t *);//size accounting
 
 	//ptrs only populated if index used
 	for(i=0;i < num_buckets ;i++){
@@ -446,6 +455,7 @@ void htable_insert(htable_t * htable, bucket_type_t btype, uint32_t prefix, uint
 	//malloc and assemble new bucket_t
 	bucket_t * n_bucket;
 	n_bucket = malloc(sizeof(bucket_t));
+	size_scalable_table += sizeof(bucket_t);//size accounting
 	n_bucket->nxt_bucket = NULL;
 	n_bucket->bucket_type = btype;
 	n_bucket->prefix = prefix & htable->lmask;
@@ -480,6 +490,7 @@ bucket_t * htable_insert_llist(bucket_t * bucket_ll, bucket_t * n_bucket, htable
 		//modify --> (marker,prefix to both)
 		n_bucket->nxt_bucket = bucket_ll->nxt_bucket;
 		free(bucket_ll);//simply replace, and free
+		size_scalable_table -= sizeof(bucket_t);//size accounting
 		htable->num_entries--;//avoid double counting entries
 		
 		return n_bucket;

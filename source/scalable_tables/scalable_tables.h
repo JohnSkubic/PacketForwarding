@@ -11,7 +11,7 @@
 #include "utility.h"
 
 //****defines****
-#define MAX_BUCKETS 65536 //2^16=65536 for now
+#define MAX_BUCKETS 4096//8192//65536 //2^16=65536 for now
 
 //****data structures****
 
