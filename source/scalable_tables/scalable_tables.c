@@ -201,6 +201,7 @@ uint32_t lookup_scalable_table ( uint32_t dest_ip, void *table ){
 	uint32_t curr_rope;
 	uint32_t nxt_hop_addr;
 	uint32_t i,mask;//level searching
+	uint32_t prefix;//speed -- iterative llist search, no jump to function
 	bucket_t * bucket;
 
 	//init
@@ -215,7 +216,7 @@ uint32_t lookup_scalable_table ( uint32_t dest_ip, void *table ){
 		//pull first curr_rope and store it in i
 		//i = nxt_search_level(&curr_rope);
 		
-		//speed -- don't jump to function just write it in (through testing saw 500k jump in lookups / S ~4000k to 4500k)
+		//speed -- don't jump to function just write it in (through testing saw 500k jump in lookups / S ~4000k to 4500k) NICE
 		for(i=32;i>0;i--){
 			//mask = level_to_mask(i);
 			//speed -- don't jump to function (4500k lookups up to 8000k lookups/S) MAJOR
@@ -329,14 +330,22 @@ uint32_t lookup_scalable_table ( uint32_t dest_ip, void *table ){
 		}
 	
 
-		//extract first "level" bits of dest_ip
-		//built into search function -- uses precomputed mask (more efficient)
-		//tdest_ip = ((i==32)?(0xFFFFFFFF):(~(0xFFFFFFFF >> i))) & dest_ip;//if not build into search
+		//extract first "level" bits of dest_ip  -- search function has this built in
 
 		//search htable of i for (t)dest_ip
+
 		//bucket = htable_search(scalable_htables[i-1],dest_ip);
+
 		//speed -- eliminate search and hash jumps (8000k lookups up to 8700 lookups / S) SIGNIFICANT
-		bucket = htable_search_llist(scalable_htables[i-1]->buckets[dest_ip >> scalable_htables[i-1]->shamt],(dest_ip& scalable_htables[i-1]->lmask));
+		//bucket = htable_search_llist(scalable_htables[i-1]->buckets[dest_ip >> scalable_htables[i-1]->shamt],(dest_ip& scalable_htables[i-1]->lmask));
+
+		//speed -- eliminate recursion down link list, iterative llist search (8700k lookups up to 9000k lookups) NICE
+		bucket = scalable_htables[i-1]->buckets[dest_ip >> scalable_htables[i-1]->shamt];
+		prefix = (dest_ip& scalable_htables[i-1]->lmask);
+		while(bucket != NULL){
+			if(bucket->prefix == prefix) {break;}//return found matching bucket
+			bucket = bucket->nxt_bucket;
+		}
 
 		if(bucket != NULL){//hit in htable
 			//best bmp and associated nxt_hop so far
